@@ -794,7 +794,7 @@ export default function App() {
                   placeholder="Search all tasks…"
                   value={tileSearch}
                   onChange={e => setTileSearch(e.target.value)}
-                  style={{ width: "100%", padding: "11px 36px 11px 38px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 14, color: "#111", background: "#fff", boxSizing: "border-box", outline: "none" }}
+                  style={{ width: "100%", padding: "11px 36px 11px 38px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 16, color: "#111", background: "#fff", boxSizing: "border-box", outline: "none" }}
                 />
                 {tileSearch.length > 0 && (
                   <button onClick={() => setTileSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "#e5e7eb", border: "none", borderRadius: "50%", width: 20, height: 20, fontSize: 11, color: "#6b7280", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>✕</button>
@@ -1044,7 +1044,7 @@ const s = {
   modalTitle:       { fontSize: 18, fontWeight: 800, color: "#111", margin: "0 0 4px" },
   modalFieldLabel:  { display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 },
   modalSub:         { color: "#9ca3af", fontSize: 13, marginBottom: 16 },
-  modalTextInput:   { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, marginBottom: 16, boxSizing: "border-box", color: "#111" },
+  modalTextInput:   { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 16, marginBottom: 16, boxSizing: "border-box", color: "#111" },
   timeRow:          { display: "flex", alignItems: "center", gap: 8, marginBottom: 16 },
   timeCol:          { flex: 1 },
   timeLabel:        { display: "block", fontSize: 12, fontWeight: 600, color: "#9ca3af", marginBottom: 6 },
