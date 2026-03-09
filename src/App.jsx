@@ -9,12 +9,12 @@ const SESSION_HOURS = 8;
 
 // ─── STAFF & PINS — update names and PINs for your actual team ───────────────
 const STAFF = [
-  { name: "Sarah",  pin: "1234", emoji: "👩" },
-  { name: "John",   pin: "2345", emoji: "👨" },
-  { name: "Emma",   pin: "3456", emoji: "👩" },
-  { name: "James",  pin: "4567", emoji: "👨" },
-  { name: "Lisa",   pin: "5678", emoji: "👩" },
-  { name: "Mike",   pin: "6789", emoji: "👨" },
+  { name: "Sarah",  pin: "1234"},
+  { name: "John",   pin: "2345"},
+  { name: "Emma",   pin: "3456"},
+  { name: "James",  pin: "4567"},
+  { name: "Lisa",   pin: "5678"},
+  { name: "Mike",   pin: "6789"},
 ];
 
 // ─── TASKS ───────────────────────────────────────────────────────────────────
