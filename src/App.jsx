@@ -248,6 +248,7 @@ export default function App() {
   const [submitting, setSubmitting]             = useState(false);
   const [submitError, setSubmitError]           = useState("");
   const [sessionExpiredMsg, setSessionExpiredMsg] = useState(false);
+  const [tileSearch, setTileSearch]             = useState("");
 
   // ── Live schedule from Airtable ──
   const [schedule, setSchedule]           = useState(null);   // null = still loading
@@ -305,6 +306,28 @@ export default function App() {
     }, 60000);
     return () => clearInterval(interval);
   }, [screen, staffName, logs, otherTasks]);
+
+  // ── Lock screen / app switch: require re-login when page becomes hidden ──
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        // Save data before locking
+        if (staffName) saveTodayData(staffName, logs, otherTasks);
+        clearSession();
+      } else if (document.visibilityState === "visible") {
+        // When they return, if no valid session exists kick to login
+        const still = loadSession();
+        if (!still && staffName) {
+          setSessionExpiredMsg(false);
+          setStaffName(""); setStaffShift("");
+          setPinEntry(""); setPinError(false);
+          setScreen("select-staff");
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [staffName, logs, otherTasks]);
 
   // ── Derived totals ──
   const totalMinutes =
@@ -688,7 +711,7 @@ export default function App() {
         {/* View toggle */}
         <div style={s.toggleRow}>
           <button style={{ ...s.toggleBtn, background: viewMode === "checklist" ? BRAND : "#f3f4f6", color: viewMode === "checklist" ? "#fff" : "#6b7280" }}
-            onClick={() => setViewMode("checklist")}>☑ Today's Tasks</button>
+            onClick={() => { setViewMode("checklist"); setTileSearch(""); }}>☑ Today's Tasks</button>
           <button style={{ ...s.toggleBtn, background: viewMode === "tiles" ? BRAND : "#f3f4f6", color: viewMode === "tiles" ? "#fff" : "#6b7280" }}
             onClick={() => setViewMode("tiles")}>⊞ All Categories</button>
         </div>
@@ -761,25 +784,87 @@ export default function App() {
 
         {/* ── TILE / CATEGORY VIEW ── */}
         {viewMode === "tiles" && (
-          <div style={s.tileGrid}>
-            {tileData.map(cat => (
-              <button key={cat.category} style={s.tile}
-                onClick={() => { setActiveCategory(cat.category); setScreen("category"); }}>
-                <div style={s.tileTopRow}>
-                  <span style={s.tileEmoji}>{cat.emoji}</span>
-                  {cat.done > 0 && <span style={s.tileDoneBadge}>{cat.done}{cat.total ? `/${cat.total}` : ""}</span>}
-                </div>
-                <div style={s.tileCatName}>{cat.category}</div>
-                <div style={s.tileCatSub}>
-                  {cat.category === "Other" ? (cat.done > 0 ? `${cat.done} added` : "Tap to add") : `${cat.done} of ${cat.total} done`}
-                </div>
-                {cat.total > 0 && (
-                  <div style={s.tileProgressTrack}>
-                    <div style={{ ...s.tileProgressFill, width: `${cat.pct * 100}%`, background: cat.done > 0 ? BRAND : "#e5e7eb" }} />
-                  </div>
+          <div>
+            {/* Search bar */}
+            <div style={{ padding: "8px 16px 4px" }}>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, color: "#9ca3af", pointerEvents: "none" }}>🔍</span>
+                <input
+                  type="text"
+                  placeholder="Search all tasks…"
+                  value={tileSearch}
+                  onChange={e => setTileSearch(e.target.value)}
+                  style={{ width: "100%", padding: "11px 36px 11px 38px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 14, color: "#111", background: "#fff", boxSizing: "border-box", outline: "none" }}
+                />
+                {tileSearch.length > 0 && (
+                  <button onClick={() => setTileSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "#e5e7eb", border: "none", borderRadius: "50%", width: 20, height: 20, fontSize: 11, color: "#6b7280", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>✕</button>
                 )}
-              </button>
-            ))}
+              </div>
+            </div>
+
+            {/* Search results */}
+            {tileSearch.trim().length > 0 ? (() => {
+              const q = tileSearch.trim().toLowerCase();
+              const allTasks = TASK_CATEGORIES.flatMap(cat => cat.items.map(item => ({ task: item, category: cat.category, emoji: cat.emoji })));
+              const results = allTasks.filter(t => t.task.toLowerCase().includes(q));
+              return (
+                <div style={{ padding: "6px 16px 0" }}>
+                  {results.length === 0 ? (
+                    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #f3f4f6", padding: "20px 16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 12 }}>No tasks found for "{tileSearch}"</div>
+                      <button
+                        style={{ background: BRAND, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                        onClick={() => { openNewOther(); setTileSearch(""); }}>
+                        + Log it as a custom task
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={s.taskCard}>
+                      {results.map((r, idx) => {
+                        const logged = logs[r.task];
+                        return (
+                          <button key={r.task} style={{ ...s.checkRow, background: logged ? BRAND_LIGHT : "#fff", borderTop: idx === 0 ? "none" : "1px solid #f3f4f6" }}
+                            onClick={() => { openStandardTask(r.task); setTileSearch(""); }}>
+                            <div style={{ ...s.checkbox, background: logged ? BRAND : "transparent", borderColor: logged ? BRAND : "#d1d5db" }}>
+                              {logged && <span style={s.checkmark}>✓</span>}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ ...s.checkTaskName, color: logged ? "#111" : "#374151", fontWeight: logged ? 700 : 500 }}>{r.task}</div>
+                              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{r.emoji} {r.category}</div>
+                            </div>
+                            {logged
+                              ? <span style={s.checkTimeBadge}>{logged.hours}h {logged.minutes}m</span>
+                              : <span style={s.taskChevron}>›</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
+              /* Category tiles (shown when not searching) */
+              <div style={s.tileGrid}>
+                {tileData.map(cat => (
+                  <button key={cat.category} style={s.tile}
+                    onClick={() => { setActiveCategory(cat.category); setScreen("category"); }}>
+                    <div style={s.tileTopRow}>
+                      <span style={s.tileEmoji}>{cat.emoji}</span>
+                      {cat.done > 0 && <span style={s.tileDoneBadge}>{cat.done}{cat.total ? `/${cat.total}` : ""}</span>}
+                    </div>
+                    <div style={s.tileCatName}>{cat.category}</div>
+                    <div style={s.tileCatSub}>
+                      {cat.category === "Other" ? (cat.done > 0 ? `${cat.done} added` : "Tap to add") : `${cat.done} of ${cat.total} done`}
+                    </div>
+                    {cat.total > 0 && (
+                      <div style={s.tileProgressTrack}>
+                        <div style={{ ...s.tileProgressFill, width: `${cat.pct * 100}%`, background: cat.done > 0 ? BRAND : "#e5e7eb" }} />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
