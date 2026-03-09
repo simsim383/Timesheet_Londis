@@ -1,858 +1,1031 @@
-import { useState, useEffect, useMemo } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Cell } from "recharts";
+import { useState, useEffect } from "react";
 
-const T={bg:"#F5F5F7",card:"#FFFFFF",border:"#F0F0F0",text:"#0A0A0A",sub:"#6B7280",muted:"#9CA3AF",accent:"#E07B39",accentLight:"#FDF0E8",green:"#16A34A",greenLight:"#F0FDF4",red:"#DC2626",redLight:"#FEF2F2",amber:"#D97706",amberLight:"#FFFBEB",blue:"#2563EB",blueLight:"#EFF6FF",div:"#F3F4F6"};
-const SC={Michelle:"#E07B39",Alyson:"#2563EB",Susan:"#8B5CF6"};
-const STAFF=["Michelle","Alyson","Susan"];
-const SHIFTS={Michelle:"Morning",Alyson:"Morning",Susan:"Evening"};
-const WDAYS=[1,2,3,4,5,6];
-const DNAMES=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const ALL_DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const AT_BASE="app6DROW7O9mZnmTY";
-const AT_SHIFTS="tbl4sVuVCiDCyXF3O";
-const AT_TASKS="tblTl58cC0siAAaSN";
-const AT_TOKEN="patppMWHKbx68aeNP.8d37f524addbaf4997c863c9682c7da9932bb0927727dade5272a72157835ea4";
-const AT_HDR={"Authorization":"Bearer "+AT_TOKEN,"Content-Type":"application/json"};
+// ─── BRAND ───────────────────────────────────────────────────────────────────
+const BRAND       = "#E07B39";
+const BRAND_DARK  = "#C4622A";
+const BRAND_LIGHT = "#FDF0E8";
 
-const DEFAULT_SCHEDULE={Monday:{Michelle:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Crisp Stacking","Fridge Date Check / Temp Check","Pricing"],Alyson:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Pop Stacking","Fridges Clean","Product Date Checks"],Susan:["Post Office","Till Lift / End of Shift Count","Personal Training","Newspaper Returns","Spirits Stacking","Mix Ups","Behind Counter Clean"]},Tuesday:{Michelle:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Dog Food Stacking","Chocolate/Sweets Stacking","Promotions"],Alyson:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Cigarette/Vape Stacking","Door Clean / Outside Clean"],Susan:["Post Office","Till Lift / End of Shift Count","Personal Training","Newspaper Returns","Wine Stacking","Delivery Unload","Stock Room Clean"]},Wednesday:{Michelle:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Pop Stacking","Fridge Stacking","Mop"],Alyson:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Crisp Stacking","Beers Stacking","Cards Stacking"],Susan:["Post Office","Till Lift / End of Shift Count","Personal Training","Newspaper Returns","Spirits Stacking","Mix Ups"]},Thursday:{Michelle:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Grocery Stacking","Freezer Stacking"],Alyson:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Chocolate/Sweets Stacking","Product Date Checks"],Susan:["Post Office","Till Lift / End of Shift Count","Personal Training","Newspaper Returns","Cigarette/Vape Stacking","Behind Counter Clean"]},Friday:{Michelle:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Crisp Stacking","Beers Stacking"],Alyson:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Wine Stacking","Cards Stacking"],Susan:["Post Office","Till Lift / End of Shift Count","Personal Training","Newspaper Returns","Pop Stacking","Delivery Unload"]},Saturday:{Michelle:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Fridge Stacking","Mop"],Alyson:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Dog Food Stacking","Freezer Stacking"],Susan:["Post Office","Till Lift / End of Shift Count","Personal Training","Newspaper Returns","Cigarette/Vape Stacking","Spirits Stacking"]},Sunday:{Michelle:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns"],Alyson:["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns"],Susan:["Post Office","Till Lift / End of Shift Count","Personal Training","Newspaper Returns"]}};
-const TASK_POOL=["Post Office","Till Lift / End of Shift Count","Personal Training","Pies","Magazine Returns","Newspaper Returns","Crisp Stacking","Pop Stacking","Beers Stacking","Wine Stacking","Dog Food Stacking","Toiletries Stacking","Fridge Stacking","Freezer Stacking","Grocery Stacking","Biscuit Stacking","Cards Stacking","Chocolate/Sweets Stacking","Mix Ups","Cigarette/Vape Stacking","Spirits Stacking","Fridge Date Check / Temp Check","Product Date Checks","Fridges Clean","Mop","Door Clean / Outside Clean","Behind Counter Clean","Stock Room Clean","Cash and Carry List","Pricing","Promotions","Delivery Unload","Serving"];
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const AIRTABLE_BASE_ID  = "app6DROW7O9mZnmTY";
+const AIRTABLE_TABLE_ID = "tbl4sVuVCiDCyXF3O";
+const AIRTABLE_TOKEN    = "patppMWHKbx68aeNP.8d37f524addbaf4997c863c9682c7da9932bb0927727dade5272a72157835ea4";
+const STORE_NAME        = "Londis";
+const SESSION_MINUTES   = 120; // 2 hours — times out but saves data
+const SHIFT_HOURS       = 6;   // both shifts are 6 hours
 
-async function fetchShifts() {
-  let rows=[],offset=null;
-  do {
-    const url=new URL("https://api.airtable.com/v0/"+AT_BASE+"/"+AT_SHIFTS);
-    url.searchParams.set("pageSize","100");
-    if(offset) url.searchParams.set("offset",offset);
-    const r=await fetch(url.toString(),{headers:{"Authorization":"Bearer "+AT_TOKEN}});
-    if(!r.ok) throw new Error("Fetch failed");
-    const d=await r.json();
-    rows=[...rows,...d.records];
-    offset=d.offset||null;
-  } while(offset);
-  return rows;
+// ─── STAFF ───────────────────────────────────────────────────────────────────
+const STAFF = [
+  { name: "Michelle", pin: "1111", initials: "MI", shift: "morning" },
+  { name: "Alyson",   pin: "2222", initials: "AL", shift: "morning" },
+  { name: "Susan",    pin: "3333", initials: "SU", shift: "evening" },
+];
+
+// ─── DAY-SPECIFIC TASK SCHEDULE ──────────────────────────────────────────────
+// Keys: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+const DAILY_SCHEDULE = {
+  // MONDAY
+  1: {
+    Michelle: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Crisp Stacking", "Fridge Date Check / Temp Check", "Pricing",
+    ],
+    Alyson: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Pop Stacking", "Fridges Clean", "Product Date Checks",
+    ],
+    Susan: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Newspaper Returns",
+      "Spirits Stacking", "Mix Ups", "Behind Counter Clean",
+    ],
+  },
+  // TUESDAY
+  2: {
+    Michelle: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Dog Food Stacking", "Chocolate/Sweets Stacking", "Promotions",
+    ],
+    Alyson: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Cigarette/Vape Stacking", "Door Clean / Outside Clean",
+    ],
+    Susan: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Newspaper Returns",
+      "Wine Stacking", "Delivery Unload", "Stock Room Clean",
+    ],
+  },
+  // WEDNESDAY
+  3: {
+    Michelle: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Pop Stacking", "Fridge Stacking", "Mop",
+    ],
+    Alyson: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Crisp Stacking", "Beers Stacking", "Cards Stacking",
+    ],
+    Susan: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Newspaper Returns",
+      "Spirits Stacking", "Mix Ups",
+    ],
+  },
+  // THURSDAY
+  4: {
+    Michelle: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Grocery Stacking", "Freezer Stacking",
+    ],
+    Alyson: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Chocolate/Sweets Stacking", "Product Date Checks",
+    ],
+    Susan: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Newspaper Returns",
+      "Cigarette/Vape Stacking", "Behind Counter Clean",
+    ],
+  },
+  // FRIDAY
+  5: {
+    Michelle: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Crisp Stacking", "Beers Stacking",
+    ],
+    Alyson: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Wine Stacking", "Cards Stacking",
+    ],
+    Susan: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Newspaper Returns",
+      "Pop Stacking", "Delivery Unload",
+    ],
+  },
+  // SATURDAY
+  6: {
+    Michelle: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Fridge Stacking", "Mop",
+    ],
+    Alyson: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+      "Dog Food Stacking", "Freezer Stacking",
+    ],
+    Susan: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Newspaper Returns",
+      "Cigarette/Vape Stacking", "Spirits Stacking",
+    ],
+  },
+  // SUNDAY — fallback (all daily tasks)
+  0: {
+    Michelle: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+    ],
+    Alyson: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Pies", "Magazine Returns", "Newspaper Returns",
+    ],
+    Susan: [
+      "Post Office", "Till Lift / End of Shift Count", "Personal Training",
+      "Newspaper Returns",
+    ],
+  },
+};
+
+// ─── TASK CATEGORIES (for tile view) ─────────────────────────────────────────
+const TASK_CATEGORIES = [
+  { category: "Customer Service",    emoji: "🛎️", items: ["Serving"] },
+  { category: "Stacking",            emoji: "📦", items: ["Crisp Stacking","Pop Stacking","Beers Stacking","Wine Stacking","Dog Food Stacking","Toiletries Stacking","Fridge Stacking","Freezer Stacking","Grocery Stacking","Biscuit Stacking","Cards Stacking","Chocolate/Sweets Stacking","Mix Ups","Cigarette/Vape Stacking","Spirits Stacking"] },
+  { category: "Checks",              emoji: "✅", items: ["Fridge Date Check / Temp Check","Product Date Checks"] },
+  { category: "Cleaning",            emoji: "🧹", items: ["Fridges Clean","Mop","Door Clean / Outside Clean","Behind Counter Clean","Stock Room Clean"] },
+  { category: "Admin & Operations",  emoji: "📋", items: ["Cash and Carry List","Magazine Returns","Newspaper Returns","Pies","Pricing","Promotions","Delivery Unload","Till Lift / End of Shift Count","Post Office","Personal Training"] },
+  { category: "Other",               emoji: "➕", items: [] },
+];
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function getWeekNumber(d) {
+  const date = new Date(d); date.setHours(0,0,0,0);
+  date.setDate(date.getDate() + 4 - (date.getDay()||7));
+  const y = new Date(date.getFullYear(),0,1);
+  return Math.ceil((((date-y)/86400000)+1)/7);
 }
 
-function cook(raw) {
-  return raw.map(r=>({
-    id:r.id,
-    staff:r.fields["Staff Name"]||"",
-    date:r.fields["Date"]||"",
-    task:r.fields["Task Name"]||"",
-    category:r.fields["Category"]||"",
-    mins:Number(r.fields["Total Minutes"]||0),
-    notes:r.fields["Task Notes"]||"",
-    week:Number(r.fields["Week Number"]||0),
-  })).filter(r=>r.staff&&r.date);
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-async function fetchScheduleFromAirtable() {
-  let rows=[],offset=null;
-  do {
-    const url=new URL("https://api.airtable.com/v0/"+AT_BASE+"/"+AT_TASKS);
-    url.searchParams.set("pageSize","100");
-    if(offset) url.searchParams.set("offset",offset);
-    const r=await fetch(url.toString(),{headers:{"Authorization":"Bearer "+AT_TOKEN}});
-    if(!r.ok) throw new Error("Schedule fetch failed");
-    const d=await r.json();
-    rows=[...rows,...d.records];
-    offset=d.offset||null;
-  } while(offset);
-  const sched=JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
-  rows.forEach(function(r) {
-    const staff=r.fields["Staff Name"],day=r.fields["Day"],tasks=r.fields["Tasks"];
-    if(staff&&day&&tasks) {
-      try {
-        if(!sched[day]) sched[day]={};
-        sched[day][staff]=JSON.parse(tasks);
-        if(!sched[day]._ids) sched[day]._ids={};
-        sched[day]._ids[staff]=r.id;
-      } catch(e) {}
+function getTodayTasks(staffName) {
+  const dow = new Date().getDay();
+  return DAILY_SCHEDULE[dow]?.[staffName] || [];
+}
+
+function getCategoryForTask(task) {
+  return TASK_CATEGORIES.find(c => c.items.includes(task))?.category || "Other";
+}
+
+// ─── LOCAL STORAGE HELPERS ───────────────────────────────────────────────────
+const STORAGE_KEY = "stafflog_v3";
+
+function loadAllData() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function saveAllData(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// Session: stores loginTime only — data stored separately keyed by name+date
+function saveSession(name) {
+  const all = loadAllData();
+  all.session = { name, loginTime: Date.now() };
+  // Initialise today's data for this staff if not exists
+  const dk = `${name}_${todayKey()}`;
+  if (!all[dk]) all[dk] = { logs: {}, otherTasks: [] };
+  saveAllData(all);
+}
+
+function loadSession() {
+  const all = loadAllData();
+  const s = all.session;
+  if (!s) return null;
+  const elapsed = (Date.now() - s.loginTime) / 60000; // minutes
+  if (elapsed > SESSION_MINUTES) {
+    // Session expired — clear session but KEEP task data
+    delete all.session;
+    saveAllData(all);
+    return null;
+  }
+  return s.name;
+}
+
+function clearSession() {
+  const all = loadAllData();
+  delete all.session;
+  saveAllData(all);
+}
+
+function loadTodayData(name) {
+  const all = loadAllData();
+  const dk = `${name}_${todayKey()}`;
+  return all[dk] || { logs: {}, otherTasks: [] };
+}
+
+function saveTodayData(name, logs, otherTasks) {
+  const all = loadAllData();
+  const dk = `${name}_${todayKey()}`;
+  all[dk] = { logs, otherTasks };
+  saveAllData(all);
+}
+
+// ─── AIRTABLE ────────────────────────────────────────────────────────────────
+async function submitToAirtable(staffName, logs, otherTasks) {
+  const now = new Date();
+  const records = [];
+
+  Object.entries(logs).forEach(([taskName, val]) => {
+    records.push({ fields: {
+      "Staff Name": staffName,
+      "Date": now.toISOString().split("T")[0],
+      "Shift Submitted At": now.toISOString(),
+      "Total Minutes": parseInt(val.hours||0)*60+parseInt(val.minutes||0),
+      "Task Name": taskName,
+      "Task Hours": parseInt(val.hours||0),
+      "Task Minutes": parseInt(val.minutes||0),
+      "Task Notes": val.notes||"",
+      "Category": getCategoryForTask(taskName),
+      "Week Number": getWeekNumber(now),
+      "Store": STORE_NAME,
+    }});
+  });
+
+  otherTasks.forEach(ot => {
+    if (!ot.name || (!ot.hours && !ot.minutes)) return;
+    records.push({ fields: {
+      "Staff Name": staffName,
+      "Date": now.toISOString().split("T")[0],
+      "Shift Submitted At": now.toISOString(),
+      "Total Minutes": parseInt(ot.hours||0)*60+parseInt(ot.minutes||0),
+      "Task Name": ot.name,
+      "Task Hours": parseInt(ot.hours||0),
+      "Task Minutes": parseInt(ot.minutes||0),
+      "Task Notes": ot.notes||"",
+      "Category": "Other",
+      "Week Number": getWeekNumber(now),
+      "Store": STORE_NAME,
+    }});
+  });
+
+  if (!records.length) throw new Error("No tasks to submit");
+
+  for (let i = 0; i < records.length; i += 10) {
+    const res = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`,
+      { method: "POST", headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ records: records.slice(i, i+10) }) }
+    );
+    if (!res.ok) { const e = await res.json(); throw new Error(e?.error?.message || "Airtable error"); }
+  }
+}
+
+// ─── APP ─────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [screen, setScreen]               = useState("select-staff");
+  const [staffName, setStaffName]         = useState("");
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [pinEntry, setPinEntry]           = useState("");
+  const [pinError, setPinError]           = useState(false);
+  const [viewMode, setViewMode]           = useState("checklist");
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [logs, setLogs]                   = useState({});
+  const [otherTasks, setOtherTasks]       = useState([]);
+  const [activeTask, setActiveTask]       = useState(null);
+  const [inputHours, setInputHours]       = useState("");
+  const [inputMinutes, setInputMinutes]   = useState("");
+  const [inputNotes, setInputNotes]       = useState("");
+  const [inputOtherName, setInputOtherName] = useState("");
+  const [submitting, setSubmitting]       = useState(false);
+  const [submitError, setSubmitError]     = useState("");
+  const [sessionExpiredMsg, setSessionExpiredMsg] = useState(false);
+
+  const today = new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
+  const dayName = new Date().toLocaleDateString("en-GB", { weekday:"long" });
+
+  // ── On mount: check session ──
+  useEffect(() => {
+    const saved = loadSession();
+    if (saved) {
+      const data = loadTodayData(saved);
+      setStaffName(saved);
+      setLogs(data.logs || {});
+      setOtherTasks(data.otherTasks || []);
+      setScreen("home");
     }
-  });
-  return sched;
-}
+  }, []);
 
-function saveScheduleToAirtable(sched,day,staff,tasks,existingId) {
-  const fields={"Staff Name":staff,"Day":day,"Tasks":JSON.stringify(tasks),"Last Updated":new Date().toISOString().split("T")[0]};
-  if(existingId) {
-    return fetch("https://api.airtable.com/v0/"+AT_BASE+"/"+AT_TASKS+"/"+existingId,{method:"PATCH",headers:AT_HDR,body:JSON.stringify({fields})})
-      .then(function(r){ if(!r.ok) throw new Error("Save failed"); return existingId; });
-  } else {
-    return fetch("https://api.airtable.com/v0/"+AT_BASE+"/"+AT_TASKS,{method:"POST",headers:AT_HDR,body:JSON.stringify({fields})})
-      .then(function(r){ if(!r.ok) throw new Error("Create failed"); return r.json(); })
-      .then(function(d){ return d.id; });
-  }
-}
+  // ── Auto-save whenever logs/otherTasks change ──
+  useEffect(() => {
+    if (staffName && screen !== "select-staff" && screen !== "pin") {
+      saveTodayData(staffName, logs, otherTasks);
+    }
+  }, [logs, otherTasks, staffName]);
 
-const fmt=function(m){if(!m)return"0m";const h=Math.floor(m/60),mn=m%60;return h>0?(h+"h"+(mn>0?" "+mn+"m":"")):(mn+"m");};
-const avgArr=function(a){return a.length?Math.round(a.reduce(function(x,y){return x+y;},0)/a.length):0;};
-const pctChg=function(a,b){return b?Math.round(((a-b)/b)*100):null;};
+  // ── Session expiry check every 60s ──
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (screen === "home" || screen === "category" || screen === "summary") {
+        const still = loadSession();
+        if (!still) {
+          // Save data then kick to login
+          if (staffName) saveTodayData(staffName, logs, otherTasks);
+          setSessionExpiredMsg(true);
+          setStaffName("");
+          setScreen("select-staff");
+        }
+      }
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [screen, staffName, logs, otherTasks]);
 
-function wkNum(ds) {
-  const d=new Date(ds);d.setHours(0,0,0,0);d.setDate(d.getDate()+4-(d.getDay()||7));
-  const y=new Date(d.getFullYear(),0,1);return Math.ceil((((d-y)/86400000)+1)/7);
-}
-const curWk=function(){return wkNum(new Date().toISOString().split("T")[0]);};
-const prvWk=function(){const d=new Date();d.setDate(d.getDate()-7);return wkNum(d.toISOString().split("T")[0]);};
-const todayStr=function(){return new Date().toISOString().split("T")[0];};
+  // ── Totals ──
+  const totalMinutes =
+    Object.values(logs).reduce((a,v) => a + parseInt(v.hours||0)*60 + parseInt(v.minutes||0), 0) +
+    otherTasks.reduce((a,t) => a + parseInt(t.hours||0)*60 + parseInt(t.minutes||0), 0);
+  const totalHoursDecimal = totalMinutes / 60;
+  const progressPct = Math.min((totalHoursDecimal / SHIFT_HOURS) * 100, 100);
+  const totalDisplay = `${Math.floor(totalMinutes/60)}h ${totalMinutes%60}m`;
+  const totalTaskCount = Object.keys(logs).length + otherTasks.filter(t=>t.name).length;
 
-function expDaysArr(n) {
-  n=n||30;const res=[],t=new Date();
-  for(let i=1;i<=n;i++){const d=new Date(t);d.setDate(t.getDate()-i);if(WDAYS.includes(d.getDay()))res.push(d.toISOString().split("T")[0]);}
-  return res;
-}
+  // Today's scheduled tasks for this staff member
+  const todayTasks = staffName ? getTodayTasks(staffName) : [];
+  const todayDone = todayTasks.filter(t => logs[t]).length;
 
-function filterPeriod(recs,period) {
-  const now=new Date();
-  if(period==="today"){const t=todayStr();return recs.filter(function(r){return r.date===t;});}
-  if(period==="week"){const wk=curWk();return recs.filter(function(r){return r.week===wk;});}
-  if(period==="month"){const y=now.getFullYear(),m=now.getMonth();return recs.filter(function(r){const d=new Date(r.date);return d.getFullYear()===y&&d.getMonth()===m;});}
-  return recs;
-}
-
-function filterPrev(recs,period) {
-  const now=new Date();
-  if(period==="today"){const prev=new Date(now);prev.setDate(now.getDate()-1);return recs.filter(function(r){return r.date===prev.toISOString().split("T")[0];});}
-  if(period==="week"){const pw=prvWk();return recs.filter(function(r){return r.week===pw;});}
-  if(period==="month"){const y=now.getFullYear(),m=now.getMonth()-1;return recs.filter(function(r){const d=new Date(r.date);return d.getFullYear()===(m<0?y-1:y)&&d.getMonth()===(m<0?11:m);});}
-  return [];
-}
-
-function staffDatesMap(recs) {
-  const m={};STAFF.forEach(function(n){m[n]=new Set();});
-  recs.forEach(function(r){if(m[r.staff])m[r.staff].add(r.date);});
-  return m;
-}
-function shiftTotals(recs,name) {
-  const m={};
-  recs.filter(function(r){return r.staff===name;}).forEach(function(r){m[r.date]=(m[r.date]||0)+r.mins;});
-  return m;
-}
-function teamTaskAvg(recs,task) {
-  const v=recs.filter(function(r){return r.task===task&&r.mins>0;}).map(function(r){return r.mins;});
-  return v.length?avgArr(v):null;
-}
-function staffTaskAvg(recs,name,task) {
-  const v=recs.filter(function(r){return r.staff===name&&r.task===task&&r.mins>0;}).map(function(r){return r.mins;});
-  return v.length?avgArr(v):null;
-}
-function consistScore(recs,name) {
-  const v=Object.values(shiftTotals(recs,name));
-  if(v.length<2) return null;
-  const m=avgArr(v),cv=Math.sqrt(v.reduce(function(a,b){return a+Math.pow(b-m,2);},0)/v.length)/m;
-  return Math.max(0,Math.round((1-Math.min(cv,1))*100));
-}
-function wkMins(recs,name,wk) {
-  return recs.filter(function(r){return r.staff===name&&r.week===wk&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);
-}
-function bestDayFor(recs,task) {
-  const m={};
-  recs.filter(function(r){return r.task===task&&r.mins>0;}).forEach(function(r){const d=DNAMES[new Date(r.date).getDay()];if(!m[d])m[d]=[];m[d].push(r.mins);});
-  const s=Object.entries(m).map(function(e){return{day:e[0],avg:avgArr(e[1]),n:e[1].length};}).filter(function(x){return x.n>=1;}).sort(function(a,b){return a.avg-b.avg;});
-  return s[0]||null;
-}
-function taskDayTrendData(recs,task) {
-  const m={};
-  recs.filter(function(r){return r.task===task&&r.mins>0;}).forEach(function(r){const d=DNAMES[new Date(r.date).getDay()];if(!m[d])m[d]=[];m[d].push(r.mins);});
-  return DNAMES.slice(1,7).map(function(d){return{day:d,mins:m[d]?avgArr(m[d]):null,n:m[d]?m[d].length:0};});
-}
-
-function genSummary(recs,period) {
-  if(!recs.length) return [{type:"info",text:"No data for this period yet. Once staff submit shifts, insights will appear here."}];
-  const pts=[];
-  const catMap={};
-  recs.filter(function(r){return r.mins>0;}).forEach(function(r){catMap[r.category]=(catMap[r.category]||0)+r.mins;});
-  const topCat=Object.entries(catMap).sort(function(a,b){return b[1]-a[1];})[0];
-  if(topCat) pts.push({type:"insight",text:"Most time this "+period+" was spent on "+topCat[0]+" — "+fmt(topCat[1])+" logged."});
-  const allTasks=[...new Set(recs.map(function(r){return r.task;}))];
-  let wd=0,wi=null;
-  allTasks.forEach(function(task){
-    const ta=teamTaskAvg(recs,task);if(!ta)return;
-    STAFF.forEach(function(n){
-      const sa=staffTaskAvg(recs,n,task);if(!sa)return;
-      const d=Math.round(((sa-ta)/ta)*100);
-      if(d>wd&&d>25){wd=d;wi={n,task,d,sa,ta};}
-    });
-  });
-  if(wi) pts.push({type:"flag",text:wi.n+" is "+wi.d+"% slower than average on \""+wi.task+"\" — "+wi.sa+"m vs "+wi.ta+"m team avg."});
-  const staffMins=STAFF.map(function(n){return{n,total:recs.filter(function(r){return r.staff===n&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0)};}).filter(function(s){return s.total>0;}).sort(function(a,b){return b.total-a.total;});
-  if(staffMins.length>0) pts.push({type:"good",text:staffMins[0].n+" logged the most time this "+period+" — "+fmt(staffMins[0].total)+"."});
-  if(period!=="today"){
-    ["Personal Training","Post Office"].forEach(function(task){
-      const b=bestDayFor(recs,task);
-      if(b) pts.push({type:"insight",text:"\""+task+"\" gets done fastest on "+b.day+"s — avg "+b.avg+" mins."});
-    });
-  }
-  const today=todayStr();
-  const notIn=WDAYS.includes(new Date().getDay())?STAFF.filter(function(n){return !staffDatesMap(recs)[n].has(today);}):[];
-  if(notIn.length&&(period==="today"||period==="week")) pts.push({type:"flag",text:notIn.join(", ")+(notIn.length===1?" has":" have")+" not submitted today."});
-  if(!pts.length) pts.push({type:"info",text:"Everything looks steady. More submissions will surface deeper patterns."});
-  return pts;
-}
-
-function genStaffInsights(name,recs,allRecs,period) {
-  const pts=[];
-  const sRecs=recs.filter(function(r){return r.staff===name&&r.mins>0;});
-  if(!sRecs.length) return [
-    {type:"info",text:"No data for this period yet — insights appear once shifts are submitted."},
-    {type:"info",text:"Try switching to This Week or This Month to see broader patterns."},
-    {type:"info",text:"Once data flows in, you will see task speed, output targets, and standout strengths here."}
-  ];
-  const taskMap={};
-  sRecs.forEach(function(r){if(!taskMap[r.task])taskMap[r.task]=[];taskMap[r.task].push(r.mins);});
-  const taskComps=Object.entries(taskMap).map(function(e){
-    const sa=avgArr(e[1]),ta=teamTaskAvg(allRecs,e[0]);
-    const diff=ta?Math.round(((sa-ta)/ta)*100):null;
-    return{task:e[0],sa,ta,diff,count:e[1].length};
-  }).filter(function(t){return t.diff!==null;});
-  const faster=taskComps.filter(function(t){return t.diff<-10;}).sort(function(a,b){return a.diff-b.diff;});
-  const slower=taskComps.filter(function(t){return t.diff>10;}).sort(function(a,b){return b.diff-a.diff;});
-  if(faster.length>0){
-    const f=faster[0];
-    pts.push({type:"good",text:"Standout speed: "+name+" completes \""+f.task+"\" "+Math.abs(f.diff)+"% faster than the team average ("+f.sa+"m vs "+f.ta+"m). A real strength worth recognising."});
-  } else {
-    pts.push({type:"insight",text:"No tasks significantly faster than team average this "+period+". With more data this will surface "+name+"'s strongest areas."});
-  }
-  if(slower.length>0){
-    const s=slower[0];
-    pts.push({type:"flag",text:"Watch point: \""+s.task+"\" is taking "+s.diff+"% longer than average ("+s.sa+"m vs "+s.ta+"m team avg). A quick conversation could help speed this up."});
-  } else {
-    pts.push({type:"good",text:"No tasks flagged as significantly slower than the team this "+period+". "+name+" is performing consistently across all logged tasks."});
-  }
-  const totalMins=sRecs.reduce(function(a,r){return a+r.mins;},0);
-  const bench={today:360,week:1800,month:7200}[period]||360;
-  const benchPct=Math.round((totalMins/bench)*100);
-  if(benchPct>=90) pts.push({type:"good",text:"Output: "+name+" has logged "+fmt(totalMins)+" this "+period+" — "+benchPct+"% of the expected shift target. Excellent effort."});
-  else if(benchPct>=55) pts.push({type:"insight",text:"Output: "+name+" has logged "+fmt(totalMins)+" this "+period+" — "+benchPct+"% of the expected target. On track, though there is room to grow."});
-  else pts.push({type:"warn",text:"Output: Only "+fmt(totalMins)+" logged this "+period+" ("+benchPct+"% of target). This may be a missing submission or a shorter shift — worth checking in."});
-  return pts.slice(0,3);
-}
-
-function Card({children,style,onPress}){return <div onClick={onPress} style={{background:T.card,borderRadius:16,border:"1px solid "+T.border,boxShadow:"0 2px 12px rgba(0,0,0,0.05)",padding:16,...(style||{}),cursor:onPress?"pointer":"default"}}>{children}</div>;}
-function Lbl({children}){return <div style={{fontSize:11,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,marginTop:4}}>{children}</div>;}
-function Badge({label,type}){const m={good:{bg:T.greenLight,c:T.green},warn:{bg:T.amberLight,c:T.amber},flag:{bg:T.redLight,c:T.red},neutral:{bg:T.accentLight,c:T.accent},blue:{bg:T.blueLight,c:T.blue}};const s=m[type||"neutral"]||m.neutral;return <span style={{background:s.bg,color:s.c,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{label}</span>;}
-function Chip({p}){if(p===null||p===undefined)return <span style={{fontSize:12,color:T.muted}}>—</span>;return <span style={{fontSize:12,fontWeight:700,color:p>=0?T.green:T.red}}>{p>=0?"▲":"▼"} {Math.abs(p)}%</span>;}
-function PBar({val,max,color,h}){h=h||6;const w=max>0?Math.min((val/max)*100,100):0;return <div style={{height:h,background:T.div,borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:w+"%",background:color,borderRadius:99,transition:"width 0.5s"}}/></div>;}
-function Avatar({name,size}){size=size||36;return <div style={{width:size,height:size,borderRadius:"50%",background:SC[name]||T.accent,color:"#fff",fontWeight:800,fontSize:size*0.34,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{name.slice(0,2).toUpperCase()}</div>;}
-function InsightRow({item}){const icons={good:"✅",warn:"⚠️",flag:"🚨",insight:"💡",info:"📊"};const cols={good:T.green,warn:T.amber,flag:T.red,insight:T.blue,info:T.sub};return <div style={{display:"flex",gap:10,padding:"12px 0",borderBottom:"1px solid "+T.div}}><span style={{fontSize:18,flexShrink:0}}>{icons[item.type]||"•"}</span><p style={{margin:0,fontSize:14,color:cols[item.type]||T.sub,lineHeight:1.6,fontWeight:500}}>{item.text}</p></div>;}
-function NoteTag({note}){if(!note)return null;return <span style={{background:T.blueLight,color:T.blue,fontSize:11,fontWeight:500,padding:"2px 8px",borderRadius:8,display:"inline-block",marginTop:4,wordBreak:"break-word"}}>💬 {note}</span>;}
-function PeriodToggle({period,setPeriod}){return <div style={{display:"flex",gap:6,padding:"12px 16px 0",overflowX:"auto"}}>{[{id:"today",label:"Today"},{id:"week",label:"This Week"},{id:"month",label:"This Month"}].map(function(o){return <button key={o.id} onClick={function(){setPeriod(o.id);}} style={{background:period===o.id?"#111":"#fff",color:period===o.id?"#fff":T.sub,border:"1px solid "+(period===o.id?"#111":T.border),borderRadius:20,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{o.label}</button>;})}</div>;}
-
-function SnapshotCard({recs,prevRecs,period,sdm}){
-  const today=todayStr();
-  const totalMins=recs.filter(function(r){return r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);
-  const prevMins=prevRecs.filter(function(r){return r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);
-  const taskCount=[...new Set(recs.filter(function(r){return r.mins>0;}).map(function(r){return r.task;}))].length;
-  const activeStaff=[...new Set(recs.filter(function(r){return r.mins>0;}).map(function(r){return r.staff;}))].length;
-  const allR=recs.filter(function(r){return r.mins>0;});
-  const avgTask=allR.length?avgArr(allR.map(function(r){return r.mins;})):0;
-  const catMap={};allR.forEach(function(r){catMap[r.category]=(catMap[r.category]||0)+r.mins;});
-  const topCat=Object.entries(catMap).sort(function(a,b){return b[1]-a[1];})[0];
-  const isWorkDay=WDAYS.includes(new Date().getDay());
-  const notIn=period==="today"&&isWorkDay?STAFF.filter(function(n){return !sdm[n].has(today);}):[];
-  const live=period==="today"&&activeStaff>0;
-  const mChg=pctChg(totalMins,prevMins);
-  const dateLabel=period==="today"?new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"}):period==="week"?"Week "+curWk():new Date().toLocaleDateString("en-GB",{month:"long",year:"numeric"});
-  const headline=period==="today"?(live?"Live Data":"Waiting for submissions"):(fmt(totalMins)+" logged");
-  return (
-    <Card style={{background:"#111",border:"none",margin:"12px 16px 0"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-        <div>
-          <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.45)",letterSpacing:0.8,textTransform:"uppercase",marginBottom:2}}>{dateLabel}</div>
-          <div style={{fontSize:22,fontWeight:800,color:"#fff"}}>{headline}</div>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          {live && <div style={{width:8,height:8,borderRadius:"50%",background:"#22C55E",boxShadow:"0 0 8px #22C55E"}}/>}
-          {mChg!==null && <Chip p={mChg}/>}
-        </div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:notIn.length?10:0}}>
-        {[{l:"HOURS LOGGED",val:fmt(totalMins),dim:!totalMins},{l:"TASKS DONE",val:taskCount||"—",dim:!taskCount},{l:"STAFF IN",val:activeStaff+"/"+STAFF.length,dim:!activeStaff},{l:"AVG TASK",val:avgTask?avgTask+"m":"—",dim:!avgTask}].map(function(k){return <div key={k.l} style={{background:"rgba(255,255,255,0.07)",borderRadius:12,padding:"10px 12px"}}><div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",marginBottom:4}}>{k.l}</div><div style={{fontSize:20,fontWeight:800,color:k.dim?"rgba(255,255,255,0.2)":"#fff"}}>{k.val}</div></div>;})}</div>
-      {topCat && <div style={{background:"rgba(255,255,255,0.07)",borderRadius:12,padding:"10px 12px",marginTop:8,marginBottom:notIn.length?8:0}}><div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",marginBottom:2}}>MOST TIME ON</div><div style={{fontSize:15,fontWeight:700,color:"#fff"}}>{topCat[0]} <span style={{color:"rgba(255,255,255,0.4)",fontWeight:400}}>· {fmt(topCat[1])}</span></div></div>}
-      {notIn.length>0 && <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(220,38,38,0.2)",borderRadius:10,padding:"8px 12px",marginTop:8}}><span style={{fontSize:14}}>🚨</span><span style={{fontSize:13,color:"#FCA5A5",fontWeight:600}}>Not submitted: {notIn.join(", ")}</span></div>}
-    </Card>
-  );
-}
-
-function HomeTab({allRecs,expDays}){
-  const [period,setPeriod]=useState("today");
-  const recs=useMemo(function(){return filterPeriod(allRecs,period);},[allRecs,period]);
-  const prevRecs=useMemo(function(){return filterPrev(allRecs,period);},[allRecs,period]);
-  const sdm=useMemo(function(){return staffDatesMap(allRecs);},[allRecs]);
-  const summary=useMemo(function(){return genSummary(recs,period);},[recs,period]);
-  const staffBreak=STAFF.map(function(n){return{n,mins:recs.filter(function(r){return r.staff===n&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0),prevMins:prevRecs.filter(function(r){return r.staff===n&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0)};});
-  const maxMins=Math.max.apply(null,staffBreak.map(function(s){return s.mins;}).concat([1]));
-  const catMap={};recs.filter(function(r){return r.mins>0;}).forEach(function(r){catMap[r.category]=(catMap[r.category]||0)+r.mins;});
-  const catData=Object.entries(catMap).sort(function(a,b){return b[1]-a[1];});
-  const catTotal=catData.reduce(function(a,b){return a+b[1];},0);
-  const chartData=staffBreak.map(function(s){return{name:s.n,Current:+(s.mins/60).toFixed(1),Previous:+(s.prevMins/60).toFixed(1)};});
-  const pLabel={today:"Today",week:"This Week",month:"This Month"}[period];
-  const prLabel={today:"Yesterday",week:"Last Week",month:"Last Month"}[period];
-  return (
-    <div style={{paddingBottom:90}}>
-      <PeriodToggle period={period} setPeriod={setPeriod}/>
-      <SnapshotCard recs={recs} prevRecs={prevRecs} period={period} sdm={sdm}/>
-      <div style={{padding:"14px 16px 0"}}>
-        <Lbl>Staff Hours · {pLabel}</Lbl>
-        {staffBreak.map(function(s){const chg=pctChg(s.mins,s.prevMins);return(
-          <div key={s.n} style={{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:14,marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <Avatar name={s.n} size={36}/>
-              <div style={{flex:1}}><div style={{fontSize:15,fontWeight:800,color:T.text}}>{s.n}</div><div style={{fontSize:11,color:T.muted}}>{SHIFTS[s.n]}</div></div>
-              <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:800,color:SC[s.n]}}>{fmt(s.mins)||"—"}</div><Chip p={chg}/></div>
-            </div>
-            <PBar val={s.mins} max={maxMins} color={SC[s.n]} h={7}/>
-          </div>
-        );})}
-        {chartData.some(function(d){return d.Current>0||d.Previous>0;}) && (
-          <><Lbl>{pLabel} vs {prLabel}</Lbl>
-          <Card style={{marginBottom:14,padding:"16px 8px 8px"}}>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={chartData} margin={{left:0,right:8,top:4,bottom:8}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={T.div}/>
-                <XAxis dataKey="name" tick={{fontSize:12,fill:T.sub,fontWeight:700}}/>
-                <YAxis tick={{fontSize:11,fill:T.muted}} width={24}/>
-                <Tooltip formatter={function(v){return[v+"h"];}} contentStyle={{borderRadius:12,border:"1px solid "+T.border,fontSize:13}}/>
-                <Bar dataKey="Current" radius={[6,6,0,0]}>{chartData.map(function(s){return <Cell key={s.name} fill={SC[s.name]}/>;})}</Bar>
-                <Bar dataKey="Previous" fill="#E5E7EB" radius={[6,6,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>
-          </Card></>
-        )}
-        {catData.length>0 && (
-          <><Lbl>Time by Category</Lbl>
-          <Card style={{marginBottom:14}}>
-            {catData.map(function(e){const p=Math.round((e[1]/catTotal)*100);return(
-              <div key={e[0]} style={{marginBottom:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                  <span style={{fontSize:13,fontWeight:600,color:T.sub}}>{e[0]}</span>
-                  <span style={{fontSize:13,fontWeight:700,color:T.text}}>{fmt(e[1])} <span style={{color:T.muted,fontWeight:400}}>({p}%)</span></span>
-                </div>
-                <PBar val={p} max={100} color={T.accent} h={7}/>
-              </div>
-            );})}
-          </Card></>
-        )}
-        <Lbl>Intelligence · {pLabel}</Lbl>
-        <Card style={{marginBottom:14}}>{summary.map(function(item,i){return <InsightRow key={i} item={item}/>;})}</Card>
-      </div>
-    </div>
-  );
-}
-
-function StaffTab({allRecs,expDays,onNav}){
-  const [period,setPeriod]=useState("week");
-  const recs=useMemo(function(){return filterPeriod(allRecs,period);},[allRecs,period]);
-  const prevRecs=useMemo(function(){return filterPrev(allRecs,period);},[allRecs,period]);
-  const sdm=useMemo(function(){return staffDatesMap(allRecs);},[allRecs]);
-  const today=todayStr();
-  const isWorkDay=WDAYS.includes(new Date().getDay());
-  return (
-    <div style={{paddingBottom:90}}>
-      <PeriodToggle period={period} setPeriod={setPeriod}/>
-      <div style={{padding:"14px 16px 0"}}>
-        {STAFF.map(function(n){
-          const curr=recs.filter(function(r){return r.staff===n&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);
-          const prev=prevRecs.filter(function(r){return r.staff===n&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);
-          const sc=consistScore(allRecs,n);
-          const miss30=expDays.filter(function(d){return !sdm[n].has(d);}).length;
-          const sub=sdm[n].has(today);
-          const allStaffMax=Math.max.apply(null,STAFF.map(function(nm){return recs.filter(function(r){return r.staff===nm&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);}).concat([1]));
-          return (
-            <Card key={n} style={{marginBottom:12}} onPress={function(){onNav("staffDetail",n);}}>
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-                <Avatar name={n} size={50}/>
-                <div style={{flex:1}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
-                    <span style={{fontSize:17,fontWeight:800,color:T.text}}>{n}</span>
-                    <Badge label={SHIFTS[n]} type="neutral"/>
-                  </div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {sub?<Badge label="✓ Submitted Today" type="good"/>:isWorkDay?<Badge label="Not submitted" type="flag"/>:null}
-                    {miss30>0 && <Badge label={miss30+" missing"} type="warn"/>}
-                  </div>
-                </div>
-                <span style={{fontSize:20,color:T.muted}}>›</span>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
-                {[{l:"HOURS",val:fmt(curr)||"—",col:SC[n]},{l:"VS PREV",val:<Chip p={pctChg(curr,prev)}/>,col:T.sub},{l:"CONSIST.",val:sc!==null?sc+"/100":"—",col:sc>70?T.green:sc>40?T.amber:T.red}].map(function(k){return <div key={k.l} style={{background:T.bg,borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:10,fontWeight:700,color:T.muted,marginBottom:3}}>{k.l}</div><div style={{fontSize:15,fontWeight:800,color:k.col}}>{k.val}</div></div>;})}
-              </div>
-              <PBar val={curr} max={allStaffMax} color={SC[n]} h={6}/>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function StaffDetail({name,allRecs,expDays,onNav}){
-  const [tab,setTab]=useState("overview");
-  const [period,setPeriod]=useState("week");
-  const color=SC[name];
-  const recs=useMemo(function(){return filterPeriod(allRecs,period);},[allRecs,period]);
-  const prevRecs=useMemo(function(){return filterPrev(allRecs,period);},[allRecs,period]);
-  const sRecs=useMemo(function(){return recs.filter(function(r){return r.staff===name;});},[recs,name]);
-  const sdm=useMemo(function(){return staffDatesMap(allRecs);},[allRecs]);
-  const today=todayStr();
-  const curr=sRecs.filter(function(r){return r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);
-  const prev=prevRecs.filter(function(r){return r.staff===name&&r.mins>0;}).reduce(function(a,r){return a+r.mins;},0);
-  const sc=consistScore(allRecs,name);
-  const miss30=expDays.filter(function(d){return !sdm[name].has(d);});
-  const sub=sdm[name].has(today);
-  const sm=useMemo(function(){return shiftTotals(allRecs,name);},[allRecs,name]);
-  const avgShift=Object.values(sm).length?avgArr(Object.values(sm)):0;
-  const myTasks=useMemo(function(){
-    const m={};
-    sRecs.filter(function(r){return r.mins>0;}).forEach(function(r){if(!m[r.task])m[r.task]={task:r.task,cat:r.category,vals:[],notes:[]};m[r.task].vals.push(r.mins);if(r.notes)m[r.task].notes.push({date:r.date,note:r.notes,mins:r.mins});});
-    return Object.values(m).map(function(t){const ta=teamTaskAvg(recs,t.task),sa=avgArr(t.vals),d=ta?Math.round(((sa-ta)/ta)*100):0;return{...t,avg:sa,teamAvg:ta,diff:d,count:t.vals.length};}).sort(function(a,b){return b.diff-a.diff;});
-  },[sRecs]);
-  const catBreak=useMemo(function(){
-    const m={};sRecs.filter(function(r){return r.mins>0;}).forEach(function(r){m[r.category]=(m[r.category]||0)+r.mins;});
-    const tot=Object.values(m).reduce(function(a,b){return a+b;},0);
-    return Object.entries(m).map(function(e){return{c:e[0],v:e[1],p:Math.round((e[1]/tot)*100)};}).sort(function(a,b){return b.v-a.v;});
-  },[sRecs]);
-  const heatRows=useMemo(function(){
-    const tasks=[...new Set(allRecs.filter(function(r){return r.staff===name;}).map(function(r){return r.task;}))];
-    return tasks.map(function(task){return{task,cells:DNAMES.slice(1,7).map(function(day){const done=allRecs.filter(function(r){return r.staff===name&&r.task===task&&DNAMES[new Date(r.date).getDay()]===day&&r.mins>0;});return{done:done.length>0,count:done.length,avgMins:done.length?avgArr(done.map(function(d){return d.mins;})):0};})};});
-  },[allRecs,name]);
-  const wkTrend=useMemo(function(){
-    const wks=[...new Set(allRecs.filter(function(r){return r.staff===name;}).map(function(r){return "W"+r.week;}))].sort();
-    return wks.map(function(wk){return{week:wk,hours:+(wkMins(allRecs,name,+wk.slice(1))/60).toFixed(1)};});
-  },[allRecs,name]);
-  const tabs=["overview","tasks","heatmap","trends"];
-  const insights=useMemo(function(){return genStaffInsights(name,recs,allRecs,period);},[name,recs,allRecs,period]);
-  return (
-    <div style={{paddingBottom:90}}>
-      <PeriodToggle period={period} setPeriod={setPeriod}/>
-      <div style={{padding:"12px 16px 0"}}>
-        <Card style={{marginBottom:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-            <Avatar name={name} size={52}/>
-            <div style={{flex:1}}>
-              <div style={{fontSize:20,fontWeight:800,color:T.text}}>{name}</div>
-              <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
-                <Badge label={SHIFTS[name]} type="neutral"/>
-                {sub?<Badge label="✓ Today" type="good"/>:<Badge label="Not submitted today" type="flag"/>}
-              </div>
-            </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-            {[{l:"PERIOD HRS",v:fmt(curr)||"—",s:<Chip p={pctChg(curr,prev)}/>,col:color},{l:"AVG SHIFT",v:fmt(avgShift)||"—",s:"all time",col:color},{l:"CONSISTENCY",v:sc!==null?sc+"/100":"—",s:"reliability",col:sc>70?T.green:sc>40?T.amber:T.red}].map(function(k){return <div key={k.l} style={{background:T.bg,borderRadius:12,padding:"10px 8px"}}><div style={{fontSize:10,fontWeight:700,color:T.muted,marginBottom:4}}>{k.l}</div><div style={{fontSize:16,fontWeight:800,color:k.col}}>{k.v}</div><div style={{fontSize:11,color:T.muted,marginTop:2}}>{k.s}</div></div>;})}
-          </div>
-        </Card>
-        <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
-          {tabs.map(function(t){return <button key={t} onClick={function(){setTab(t);}} style={{background:tab===t?color:T.card,color:tab===t?"#fff":T.sub,border:"1px solid "+(tab===t?color:T.border),borderRadius:20,padding:"8px 16px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
-        </div>
-        {tab==="overview" && (
-          <>
-            <Card style={{marginBottom:14}}>
-              {[{l:"This Period",v:curr,col:color},{l:"Previous",v:prev,col:"#E5E7EB"}].map(function(row){return <div key={row.l} style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600,color:T.sub}}>{row.l}</span><span style={{fontSize:13,fontWeight:800}}>{fmt(row.v)||"0m"}</span></div><PBar val={row.v} max={Math.max(curr,prev,1)} color={row.col}/></div>;})}
-              <div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}><Chip p={pctChg(curr,prev)}/></div>
-            </Card>
-            <Lbl>Time by Category</Lbl>
-            <Card style={{marginBottom:14}}>
-              {catBreak.map(function(c){return <div key={c.c} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600,color:T.sub}}>{c.c}</span><span style={{fontSize:13,fontWeight:700}}>{fmt(c.v)} <span style={{color:T.muted,fontWeight:400}}>({c.p}%)</span></span></div><PBar val={c.p} max={100} color={color}/></div>;})}
-              {!catBreak.length && <p style={{color:T.muted,fontSize:14,margin:0}}>No data for this period.</p>}
-            </Card>
-            {miss30.length>0 && (
-              <><Lbl>Missing Submissions</Lbl>
-              <Card style={{marginBottom:14}}>
-                <div style={{fontSize:22,fontWeight:800,color:T.red,marginBottom:8}}>{miss30.length} <span style={{fontSize:13,color:T.muted,fontWeight:400}}>days</span></div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {miss30.slice(0,8).map(function(d){return <span key={d} style={{background:T.redLight,color:T.red,fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20}}>{new Date(d).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</span>;})}
-                  {miss30.length>8 && <span style={{fontSize:12,color:T.muted,padding:"4px 8px"}}>+{miss30.length-8} more</span>}
-                </div>
-              </Card></>
-            )}
-            <Lbl>Owner Insights · {period==="today"?"Today":period==="week"?"This Week":"This Month"}</Lbl>
-            <Card style={{marginBottom:14}}>{insights.map(function(item,i){return <InsightRow key={i} item={item}/>;})}</Card>
-          </>
-        )}
-        {tab==="tasks" && (
-          <>
-            <Lbl>All Tasks · Tap for detail</Lbl>
-            {myTasks.map(function(t){return(
-              <Card key={t.task} style={{marginBottom:8}} onPress={function(){onNav("taskDetail",{task:t.task,staff:name});}}>
-                <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:700,color:T.text}}>{t.task}</div>
-                    <div style={{fontSize:12,color:T.muted}}>{t.cat} · {t.count} sessions</div>
-                    {t.notes.length>0 && <NoteTag note={t.notes[t.notes.length-1].note}/>}
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontSize:16,fontWeight:800,color:t.diff>0?T.red:t.diff<0?T.green:T.text}}>{t.avg}m</div>
-                    {t.teamAvg && <div style={{fontSize:11,color:T.muted}}>avg {t.teamAvg}m</div>}
-                  </div>
-                  {t.diff!==0 && <Badge label={t.diff>0?t.diff+"% slower":Math.abs(t.diff)+"% faster"} type={t.diff>0?"flag":"good"}/>}
-                  <span style={{fontSize:16,color:T.muted}}>›</span>
-                </div>
-              </Card>
-            );})}
-            {!myTasks.length && <p style={{color:T.muted,fontSize:14,textAlign:"center",padding:"32px 0"}}>No tasks for this period.</p>}
-          </>
-        )}
-        {tab==="heatmap" && (
-          <>
-            <Lbl>Task Completion Heatmap (All Time)</Lbl>
-            <Card style={{marginBottom:14,overflowX:"auto"}}>
-              {heatRows.length>0?(
-                <div style={{overflowX:"auto"}}>
-                  <table style={{borderCollapse:"collapse",width:"100%",fontSize:11}}>
-                    <thead><tr>
-                      <th style={{textAlign:"left",color:T.muted,fontWeight:700,paddingRight:8,paddingBottom:6,whiteSpace:"nowrap"}}>Task</th>
-                      {["Mon","Tue","Wed","Thu","Fri","Sat"].map(function(d){return <th key={d} style={{color:T.muted,fontWeight:700,paddingBottom:6,textAlign:"center",minWidth:34}}>{d}</th>;})}
-                    </tr></thead>
-                    <tbody>{heatRows.map(function(row){return(
-                      <tr key={row.task}>
-                        <td style={{paddingRight:8,paddingBottom:4,color:T.sub,fontWeight:600,whiteSpace:"nowrap",fontSize:11,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis"}}>{row.task}</td>
-                        {row.cells.map(function(cell,i){return(
-                          <td key={i} style={{textAlign:"center",paddingBottom:4}}>
-                            <div style={{width:28,height:28,borderRadius:7,margin:"0 auto",background:cell.done?(cell.avgMins>60?"#FEE2E2":cell.avgMins>30?"#FEF3C7":"#DCFCE7"):"#F3F4F6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,border:cell.done?"1px solid rgba(0,0,0,0.06)":"none"}}>
-                              {cell.done?(cell.avgMins>60?"🔴":cell.avgMins>30?"🟡":"🟢"):""}
-                            </div>
-                          </td>
-                        );})}
-                      </tr>
-                    );})}
-                    </tbody>
-                  </table>
-                  <div style={{display:"flex",gap:12,marginTop:10,fontSize:11,color:T.muted}}><span>🟢 &lt;30m</span><span>🟡 30–60m</span><span>🔴 &gt;60m</span></div>
-                </div>
-              ):<p style={{color:T.muted,fontSize:14,margin:0}}>No data yet.</p>}
-            </Card>
-          </>
-        )}
-        {tab==="trends" && (
-          <>
-            {wkTrend.length>1 && (
-              <><Lbl>Weekly Hours Trend (All Time)</Lbl>
-              <Card style={{marginBottom:14,padding:"16px 8px 8px"}}>
-                <ResponsiveContainer width="100%" height={180}>
-                  <LineChart data={wkTrend} margin={{left:0,right:8,top:4,bottom:8}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={T.div}/>
-                    <XAxis dataKey="week" tick={{fontSize:11,fill:T.muted}}/>
-                    <YAxis tick={{fontSize:11,fill:T.muted}} width={24}/>
-                    <Tooltip formatter={function(v){return[v+"h"];}} contentStyle={{borderRadius:12,border:"1px solid "+T.border,fontSize:13}}/>
-                    <Line type="monotone" dataKey="hours" stroke={color} strokeWidth={3} dot={{fill:color,r:4}}/>
-                  </LineChart>
-                </ResponsiveContainer>
-              </Card></>
-            )}
-            <Lbl>Recent Shifts</Lbl>
-            <Card>
-              {Object.entries(sm).sort(function(a,b){return b[0].localeCompare(a[0]);}).slice(0,10).map(function(e,i){return(
-                <div key={e[0]} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderTop:i===0?"none":"1px solid "+T.div}}>
-                  <span style={{fontSize:14,color:T.sub}}>{new Date(e[0]).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</span>
-                  <span style={{fontSize:14,fontWeight:700,color:e[1]>=300?T.green:e[1]>=180?color:T.red}}>{fmt(e[1])}</span>
-                </div>
-              );})}
-              {!Object.keys(sm).length && <p style={{color:T.muted,fontSize:14,margin:0}}>No shifts yet.</p>}
-            </Card>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TaskDetail({task,staffName,allRecs}){
-  const color=SC[staffName];
-  const sRecs=allRecs.filter(function(r){return r.staff===staffName&&r.task===task&&r.mins>0;});
-  const ta=teamTaskAvg(allRecs,task);
-  const sa=staffTaskAvg(allRecs,staffName,task);
-  const diff=ta&&sa?Math.round(((sa-ta)/ta)*100):null;
-  const best=bestDayFor(allRecs.filter(function(r){return r.staff===staffName;}),task);
-  const dayTrend=taskDayTrendData(allRecs.filter(function(r){return r.staff===staffName;}),task).filter(function(d){return d.mins!==null;});
-  const allAvgs=STAFF.map(function(n){return{n,avg:staffTaskAvg(allRecs,n,task)||0};}).filter(function(s){return s.avg>0;});
-  const sessions=sRecs.sort(function(a,b){return b.date.localeCompare(a.date);}).slice(0,15);
-  return (
-    <div style={{padding:"12px 16px 90px"}}>
-      <Card style={{marginBottom:14}}>
-        <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:4}}>{task}</div>
-        <div style={{fontSize:13,color:T.muted,marginBottom:14}}>{staffName} · {sRecs.length} sessions</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-          {[{l:"STAFF AVG",v:sa?sa+"m":"—",col:color},{l:"TEAM AVG",v:ta?ta+"m":"—",col:T.sub},{l:"DIFF",v:diff!==null?(diff>0?"+":"")+diff+"%":"—",col:diff>15?T.red:diff<-15?T.green:T.text}].map(function(s){return <div key={s.l} style={{background:T.bg,borderRadius:12,padding:"10px 8px",textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,color:T.muted,marginBottom:4}}>{s.l}</div><div style={{fontSize:18,fontWeight:800,color:s.col}}>{s.v}</div></div>;})}
-        </div>
-      </Card>
-      {allAvgs.length>1 && (
-        <><Lbl>All Staff Comparison</Lbl>
-        <Card style={{marginBottom:14,padding:"16px 8px 8px"}}>
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={allAvgs.map(function(s){return{name:s.n,mins:s.avg};})} margin={{left:0,right:8,top:4,bottom:8}}>
-              <CartesianGrid strokeDasharray="3 3" stroke={T.div}/>
-              <XAxis dataKey="name" tick={{fontSize:12,fill:T.sub,fontWeight:700}}/>
-              <YAxis tick={{fontSize:11,fill:T.muted}} width={24}/>
-              <Tooltip formatter={function(v){return[v+" mins"];}} contentStyle={{borderRadius:12,border:"1px solid "+T.border,fontSize:13}}/>
-              <Bar dataKey="mins" radius={[6,6,0,0]}>{allAvgs.map(function(s){return <Cell key={s.n} fill={SC[s.n]||T.accent}/>;})}</Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card></>
-      )}
-      {dayTrend.length>1 && (
-        <><Lbl>Avg Time by Day</Lbl>
-        <Card style={{marginBottom:14,padding:"16px 8px 8px"}}>
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={dayTrend} margin={{left:0,right:8,top:4,bottom:8}}>
-              <CartesianGrid strokeDasharray="3 3" stroke={T.div}/>
-              <XAxis dataKey="day" tick={{fontSize:12,fill:T.sub}}/>
-              <YAxis tick={{fontSize:11,fill:T.muted}} width={24}/>
-              <Tooltip formatter={function(v){return[v+" mins"];}} contentStyle={{borderRadius:12,border:"1px solid "+T.border,fontSize:13}}/>
-              <Bar dataKey="mins" radius={[6,6,0,0]}>{dayTrend.map(function(d,i){return <Cell key={i} fill={best&&d.day===best.day?"#22C55E":d.mins>60?"#FCA5A5":d.mins>30?"#FCD34D":color}/>;})}</Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          {best && <div style={{fontSize:12,color:T.green,fontWeight:600,textAlign:"center",marginTop:6}}>Fastest on {best.day}s</div>}
-        </Card></>
-      )}
-      <Lbl>Session History with Notes</Lbl>
-      <Card>
-        {sessions.map(function(s,i){return(
-          <div key={i} style={{padding:"12px 0",borderTop:i===0?"none":"1px solid "+T.div}}>
-            <div style={{display:"flex",justifyContent:"space-between"}}>
-              <span style={{fontSize:13,color:T.sub}}>{new Date(s.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</span>
-              <span style={{fontSize:14,fontWeight:700,color:ta&&s.mins>ta*1.3?T.red:ta&&s.mins<ta*0.7?T.green:T.text}}>{s.mins}m</span>
-            </div>
-            {s.notes && <NoteTag note={s.notes}/>}
-          </div>
-        );})}
-        {!sessions.length && <p style={{color:T.muted,fontSize:14,margin:0}}>No sessions yet.</p>}
-      </Card>
-    </div>
-  );
-}
-
-function ConfirmModal({message,onConfirm,onCancel}){
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"flex-end",zIndex:200}} onClick={onCancel}>
-      <div onClick={function(e){e.stopPropagation();}} style={{background:"#fff",borderRadius:"24px 24px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:480,margin:"0 auto"}}>
-        <div style={{width:40,height:4,borderRadius:99,background:"#E5E7EB",margin:"0 auto 20px"}}/>
-        <div style={{fontSize:17,fontWeight:800,color:T.text,marginBottom:8,textAlign:"center"}}>Remove Task?</div>
-        <div style={{fontSize:14,color:T.sub,textAlign:"center",marginBottom:24,lineHeight:1.6}}>{message}</div>
-        <div style={{display:"flex",gap:10}}>
-          <button onClick={onCancel} style={{flex:1,padding:"14px",borderRadius:14,background:T.bg,color:T.sub,fontSize:15,fontWeight:700,border:"1px solid "+T.border,cursor:"pointer"}}>Cancel</button>
-          <button onClick={onConfirm} style={{flex:1,padding:"14px",borderRadius:14,background:T.red,color:"#fff",fontSize:15,fontWeight:700,border:"none",cursor:"pointer"}}>Remove</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ActionsTab(){
-  const [selStaff,setSelStaff]=useState(null);
-  const [schedule,setSchedule]=useState(null);
-  const [loadingS,setLoadingS]=useState(false);
-  const [saving,setSaving]=useState(false);
-  const [saveStatus,setSaveStatus]=useState(null);
-  const [selDay,setSelDay]=useState(ALL_DAYS[new Date().getDay()===0?6:new Date().getDay()-1]);
-  const [adding,setAdding]=useState(false);
-  const [newTask,setNewTask]=useState("");
-  const [confirmTask,setConfirmTask]=useState(null);
-
-  useEffect(function(){
-    if(!selStaff) return;
-    setLoadingS(true);
-    fetchScheduleFromAirtable()
-      .then(function(s){setSchedule(s);setLoadingS(false);})
-      .catch(function(){setSchedule(JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)));setLoadingS(false);});
-  },[selStaff]);
-
-  const curDay=selDay;
-  const todayTasks=schedule&&selStaff&&schedule[curDay]?schedule[curDay][selStaff]||[]:[];
-  const unusedTasks=TASK_POOL.filter(function(t){return !todayTasks.includes(t);});
-  const existingId=schedule&&schedule[curDay]&&schedule[curDay]._ids?schedule[curDay]._ids[selStaff]||null:null;
-
-  function persistChange(newTasks){
-    setSaving(true);setSaveStatus(null);
-    saveScheduleToAirtable(schedule,curDay,selStaff,newTasks,existingId)
-      .then(function(newId){
-        setSchedule(function(prev){
-          const u=JSON.parse(JSON.stringify(prev));
-          if(!u[curDay]._ids) u[curDay]._ids={};
-          u[curDay]._ids[selStaff]=newId;
-          return u;
-        });
-        setSaveStatus("ok");setSaving(false);
-        setTimeout(function(){setSaveStatus(null);},2500);
-      })
-      .catch(function(){
-        setSaveStatus("err");setSaving(false);
-        setTimeout(function(){setSaveStatus(null);},2500);
-      });
-  }
-
-  function removeTask(task){
-    const newTasks=(schedule[curDay]&&schedule[curDay][selStaff]?schedule[curDay][selStaff]:[]).filter(function(t){return t!==task;});
-    setSchedule(function(prev){const u=JSON.parse(JSON.stringify(prev));u[curDay][selStaff]=newTasks;return u;});
-    persistChange(newTasks);
-  }
-
-  function addTask(t){
-    if(!t.trim()) return;
-    const existing=schedule&&schedule[curDay]&&schedule[curDay][selStaff]?schedule[curDay][selStaff]:[];
-    if(existing.includes(t)){setNewTask("");setAdding(false);return;}
-    const newTasks=[...existing,t];
-    setSchedule(function(prev){const u=JSON.parse(JSON.stringify(prev));if(!u[curDay])u[curDay]={};u[curDay][selStaff]=newTasks;return u;});
-    persistChange(newTasks);
-    setNewTask("");setAdding(false);
-  }
-
-  if(!selStaff) return (
-    <div style={{padding:"16px 16px 90px"}}>
-      <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:4}}>Actions</div>
-      <div style={{fontSize:14,color:T.sub,marginBottom:20}}>Edit each staff member's daily task schedule. Changes sync to Airtable instantly.</div>
-      {STAFF.map(function(n){return(
-        <Card key={n} style={{marginBottom:10}} onPress={function(){setSelStaff(n);}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <Avatar name={n} size={46}/>
-            <div style={{flex:1}}><div style={{fontSize:16,fontWeight:800,color:T.text}}>{n}</div><div style={{fontSize:13,color:T.muted}}>{SHIFTS[n]} shift · Tap to edit schedule</div></div>
-            <span style={{fontSize:20,color:T.muted}}>›</span>
-          </div>
-        </Card>
-      );})}
-      <div style={{marginTop:20,background:T.greenLight,borderRadius:12,padding:"14px 16px",border:"1px solid #BBF7D0"}}>
-        <div style={{fontSize:13,fontWeight:700,color:T.green,marginBottom:4}}>✅ Airtable Sync Active</div>
-        <div style={{fontSize:13,color:T.green,lineHeight:1.6}}>Schedules save to your TaskSchedules table. Staff see updates next time they open the app.</div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{padding:"0 16px 90px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"16px 0 12px"}}>
-        <button onClick={function(){setSelStaff(null);}} style={{background:T.bg,border:"1px solid "+T.border,borderRadius:10,padding:"6px 12px",cursor:"pointer",color:T.text,fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>← Back</button>
-        <Avatar name={selStaff} size={36}/>
-        <div style={{flex:1}}>
-          <div style={{fontSize:16,fontWeight:800,color:T.text}}>{selStaff} Schedule</div>
-          <div style={{fontSize:12,color:T.muted}}>{SHIFTS[selStaff]} shift</div>
-        </div>
-        {saving && <span style={{fontSize:12,color:T.muted}}>Saving…</span>}
-        {saveStatus==="ok" && <span style={{fontSize:12,color:T.green,fontWeight:700}}>✓ Synced</span>}
-        {saveStatus==="err" && <span style={{fontSize:12,color:T.red,fontWeight:700}}>⚠ Failed</span>}
-      </div>
-      <div style={{display:"flex",gap:6,marginBottom:16,overflowX:"auto",paddingBottom:2}}>
-        {ALL_DAYS.map(function(d){return <button key={d} onClick={function(){setSelDay(d);}} style={{background:selDay===d?SC[selStaff]:"#fff",color:selDay===d?"#fff":T.sub,border:"1px solid "+(selDay===d?SC[selStaff]:T.border),borderRadius:20,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{d.slice(0,3)}</button>;})}</div>
-      {loadingS?(
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"24px 0",color:T.muted,fontSize:14}}>
-          <div style={{width:20,height:20,borderRadius:"50%",border:"2px solid "+T.div,borderTop:"2px solid "+T.accent,animation:"spin 0.8s linear infinite"}}/>
-          Loading from Airtable…
-        </div>
-      ):(
-        <>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <Lbl>{curDay} Tasks ({todayTasks.length})</Lbl>
-            <button onClick={function(){setAdding(true);}} style={{background:SC[selStaff],color:"#fff",border:"none",borderRadius:20,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>+ Add</button>
-          </div>
-          {adding && (
-            <Card style={{marginBottom:12,border:"1px solid "+SC[selStaff]}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:10}}>Add task for {curDay}</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
-                {unusedTasks.slice(0,12).map(function(t){return <button key={t} onClick={function(){addTask(t);}} style={{background:T.bg,border:"1px solid "+T.border,borderRadius:20,padding:"5px 12px",fontSize:12,fontWeight:600,color:T.sub,cursor:"pointer"}}>{t}</button>;})}
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <input value={newTask} onChange={function(e){setNewTask(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addTask(newTask);}} placeholder="Or type a custom task…" style={{flex:1,padding:"10px 12px",borderRadius:10,border:"1.5px solid "+T.border,fontSize:14,color:T.text}}/>
-                <button onClick={function(){addTask(newTask);}} style={{background:SC[selStaff],color:"#fff",border:"none",borderRadius:10,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer"}}>Add</button>
-              </div>
-              <button onClick={function(){setAdding(false);}} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",marginTop:8,padding:0}}>Cancel</button>
-            </Card>
-          )}
-          <Card>
-            {todayTasks.length===0 && <p style={{color:T.muted,fontSize:14,margin:0}}>No tasks for {curDay}. Tap + Add.</p>}
-            {todayTasks.map(function(task,i){return(
-              <div key={task} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 0",borderTop:i===0?"none":"1px solid "+T.div}}>
-                <div style={{width:10,height:10,borderRadius:"50%",background:SC[selStaff],flexShrink:0}}/>
-                <span style={{flex:1,fontSize:14,fontWeight:600,color:T.text}}>{task}</span>
-                <button onClick={function(){setConfirmTask(task);}} disabled={saving} style={{background:T.redLight,color:T.red,border:"none",borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",opacity:saving?0.5:1}}>Remove</button>
-              </div>
-            );})}
-          </Card>
-        </>
-      )}
-      {confirmTask && (
-        <ConfirmModal
-          message={"Remove \""+confirmTask+"\" from "+selStaff+"'s "+curDay+" schedule?"}
-          onConfirm={function(){removeTask(confirmTask);setConfirmTask(null);}}
-          onCancel={function(){setConfirmTask(null);}}
-        />
-      )}
-    </div>
-  );
-}
-
-export default function App(){
-  const [bottomTab,setBottomTab]=useState("home");
-  const [subNav,setSubNav]=useState(null);
-  const [allRecs,setAllRecs]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [error,setError]=useState(null);
-  const expDays=useMemo(function(){return expDaysArr(30);},[]);
-
-  const load=function(){
-    setLoading(true);setError(null);
-    fetchShifts()
-      .then(function(r){setAllRecs(cook(r));setLoading(false);})
-      .catch(function(e){setError(e.message);setLoading(false);});
+  // ── PIN ──
+  const handlePinPress = (d) => {
+    if (pinEntry.length >= 4) return;
+    const next = pinEntry + d;
+    setPinEntry(next); setPinError(false);
+    if (next.length === 4) {
+      setTimeout(() => {
+        if (next === selectedStaff.pin) {
+          // Check if there's saved data for today
+          const data = loadTodayData(selectedStaff.name);
+          setStaffName(selectedStaff.name);
+          setLogs(data.logs || {});
+          setOtherTasks(data.otherTasks || []);
+          saveSession(selectedStaff.name);
+          setPinEntry("");
+          setScreen("home");
+        } else {
+          setPinError(true);
+          setTimeout(() => setPinEntry(""), 700);
+        }
+      }, 180);
+    }
   };
-  useEffect(function(){load();},[]);
 
-  function onNav(type,data){setSubNav({type,...(typeof data==="string"?{staff:data}:data)});window.scrollTo(0,0);}
-  function goBack(){if(subNav&&subNav.type==="taskDetail")setSubNav({type:"staffDetail",staff:subNav.staff});else setSubNav(null);window.scrollTo(0,0);}
+  // ── Task modal ──
+  const openStandardTask = (task) => {
+    const e = logs[task]||{};
+    setActiveTask(task); setInputHours(e.hours??""); setInputMinutes(e.minutes??"");
+    setInputNotes(e.notes??""); setInputOtherName("");
+  };
+  const openOtherTask = (id) => {
+    const e = otherTasks.find(t=>t.id===id)||{};
+    setActiveTask(`other-${id}`); setInputHours(e.hours??""); setInputMinutes(e.minutes??"");
+    setInputNotes(e.notes??""); setInputOtherName(e.name??"");
+  };
+  const openNewOther = () => {
+    setActiveTask(`other-new-${Date.now()}`);
+    setInputHours(""); setInputMinutes(""); setInputNotes(""); setInputOtherName("");
+  };
+  const saveTask = () => {
+    if (!inputHours && !inputMinutes) return;
+    if (activeTask.startsWith("other-new-")) {
+      if (!inputOtherName.trim()) return;
+      setOtherTasks(p => [...p, { id: activeTask.replace("other-new-",""), name: inputOtherName.trim(), hours: inputHours||"0", minutes: inputMinutes||"0", notes: inputNotes }]);
+    } else if (activeTask.startsWith("other-")) {
+      const id = activeTask.replace("other-","");
+      setOtherTasks(p => p.map(t => t.id===id ? {...t, name:inputOtherName.trim()||t.name, hours:inputHours||"0", minutes:inputMinutes||"0", notes:inputNotes} : t));
+    } else {
+      setLogs(p => ({...p, [activeTask]: { hours:inputHours||"0", minutes:inputMinutes||"0", notes:inputNotes }}));
+    }
+    setActiveTask(null);
+  };
+  const removeTask = () => {
+    if (activeTask.startsWith("other-")) {
+      const id = activeTask.replace("other-","").replace("new-","");
+      setOtherTasks(p => p.filter(t=>t.id!==id));
+    } else { setLogs(p => { const n={...p}; delete n[activeTask]; return n; }); }
+    setActiveTask(null);
+  };
 
-  const isSubPage=!!subNav;
-  const now=new Date();
-  const greeting=now.getHours()<12?"Good morning":now.getHours()<17?"Good afternoon":"Good evening";
-  const subTitle=subNav&&subNav.type==="staffDetail"?subNav.staff:(subNav&&subNav.task&&subNav.task.length>22?subNav.task.slice(0,21)+"…":subNav&&subNav.task);
-  const subSub=subNav&&subNav.type==="staffDetail"?(SHIFTS[subNav.staff]+" · "+subNav.staff):subNav&&subNav.staff;
+  const handleSubmit = async () => {
+    setSubmitting(true); setSubmitError("");
+    try {
+      await submitToAirtable(staffName, logs, otherTasks);
+      // Clear today's saved data after successful submit
+      const all = loadAllData();
+      delete all[`${staffName}_${todayKey()}`];
+      saveAllData(all);
+      setScreen("submitted");
+    } catch(e) { setSubmitError(e.message||"Something went wrong."); }
+    finally { setSubmitting(false); }
+  };
 
-  return (
-    <div style={{background:T.bg,minHeight:"100vh",fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif",maxWidth:480,margin:"0 auto"}}>
-      <div style={{background:"#111",position:"sticky",top:0,zIndex:20,boxShadow:"0 2px 16px rgba(0,0,0,0.15)"}}>
-        <div style={{padding:"14px 16px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            {isSubPage && <button onClick={goBack} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,padding:"6px 12px",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:4,marginRight:4}}>← Back</button>}
-            <div>
-              {!isSubPage?(
-                <>
-                  <div style={{fontSize:16,fontWeight:800,color:"#fff",letterSpacing:-0.3}}>Londis · Gateway, Leeds</div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:1}}>{greeting} · {now.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</div>
-                </>
-              ):(
-                <>
-                  <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>{subTitle}</div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:1}}>{subSub}</div>
-                </>
-              )}
+  const handleSignOut = () => {
+    clearSession(); setStaffName(""); setLogs({}); setOtherTasks([]);
+    setScreen("select-staff"); setSubmitError("");
+  };
+
+  const resetShift = () => {
+    setLogs({}); setOtherTasks([]); setSubmitError(""); setScreen("home");
+  };
+
+  const catObj = activeCategory ? TASK_CATEGORIES.find(c=>c.category===activeCategory) : null;
+
+  // ── SELECT STAFF ─────────────────────────────────────────────────────────
+  if (screen === "select-staff") return (
+    <div style={s.page}>
+      <div style={s.authWrap}>
+        <div style={s.authHeader}>
+          <div style={s.logoMark}>⚡</div>
+          <div>
+            <div style={s.logoName}>StaffLog</div>
+            <div style={s.logoStore}>Londis · {today}</div>
+          </div>
+        </div>
+
+        {sessionExpiredMsg && (
+          <div style={s.expiredBanner}>
+            🔒 Your session expired after 2 hours. Your progress has been saved — just log back in.
+          </div>
+        )}
+
+        <h2 style={s.authTitle}>Who are you?</h2>
+        <div style={s.staffGrid}>
+          {STAFF.map(m => (
+            <button key={m.name} style={s.staffTile}
+              onClick={() => { setSelectedStaff(m); setPinEntry(""); setPinError(false); setSessionExpiredMsg(false); setScreen("pin"); }}>
+              <div style={s.staffAvatar}>{m.initials}</div>
+              <div style={s.staffTileName}>{m.name}</div>
+              <div style={s.staffShiftLabel}>{m.shift}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── PIN ───────────────────────────────────────────────────────────────────
+  if (screen === "pin") return (
+    <div style={s.page}>
+      <div style={s.authWrap}>
+        <button style={s.textBtn} onClick={() => { setScreen("select-staff"); setPinEntry(""); setPinError(false); }}>← Back</button>
+        <div style={s.pinAvatarLarge}>{selectedStaff?.initials}</div>
+        <div style={s.pinStaffName}>{selectedStaff?.name}</div>
+        <p style={s.pinSub}>Enter your 4-digit PIN</p>
+        <div style={s.pinDots}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{ ...s.pinDot, background: pinError?"#ef4444":pinEntry.length>i?BRAND:"#e5e7eb", transform:pinError?"scale(1.15)":"scale(1)", transition:"all 0.15s" }}/>
+          ))}
+        </div>
+        {pinError && <p style={s.pinErrMsg}>Incorrect PIN — try again</p>}
+        <div style={s.numpad}>
+          {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((k,i) => (
+            <button key={i} style={{ ...s.numKey, opacity:k===""?0:1, pointerEvents:k===""?"none":"auto" }}
+              onClick={() => k==="⌫" ? setPinEntry(p=>p.slice(0,-1)) : k && handlePinPress(k)}>
+              {k}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── SUBMITTED ─────────────────────────────────────────────────────────────
+  if (screen === "submitted") return (
+    <div style={s.page}>
+      <div style={s.authWrap}>
+        <div style={s.successIcon}>✅</div>
+        <div style={s.successTitle}>Shift Submitted!</div>
+        <div style={s.successName}>{staffName}</div>
+        <div style={s.successDate}>{today}</div>
+        <div style={s.successStats}>
+          <div style={s.successStat}><div style={s.successStatNum}>{totalTaskCount}</div><div style={s.successStatLabel}>Tasks</div></div>
+          <div style={s.successStatDivider}/>
+          <div style={s.successStat}><div style={s.successStatNum}>{totalDisplay}</div><div style={s.successStatLabel}>Logged</div></div>
+        </div>
+        <p style={s.successMsg}>Great work today 👋 Your shift has been saved.</p>
+        <button style={s.primaryBtn} onClick={resetShift}>Log Another Shift</button>
+        <button style={s.outlineBtn} onClick={handleSignOut}>Sign Out</button>
+      </div>
+    </div>
+  );
+
+  // ── SUMMARY ───────────────────────────────────────────────────────────────
+  if (screen === "summary") {
+    const allEntries = [
+      ...Object.entries(logs).map(([task,val]) => ({ task, val, category: getCategoryForTask(task) })),
+      ...otherTasks.filter(t=>t.name).map(t => ({ task:t.name, val:{hours:t.hours,minutes:t.minutes,notes:t.notes}, category:"Other" })),
+    ];
+    return (
+      <div style={s.page}>
+        <div style={s.container}>
+          <div style={s.topBar}>
+            <button style={s.backBtn} onClick={() => setScreen("home")}>← Back</button>
+            <div style={{textAlign:"right"}}>
+              <div style={s.topBarName}>{staffName}</div>
+              <div style={s.topBarSub}>{today}</div>
             </div>
           </div>
-          <button onClick={load} disabled={loading} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"6px 12px",fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.7)",cursor:"pointer"}}>{loading?"…":"↻"}</button>
+
+          <div style={s.sectionPad}>
+            <div style={s.pageTitle}>Shift Summary</div>
+          </div>
+
+          <div style={s.summaryStatsRow}>
+            <div style={s.summaryStat}><div style={s.summaryStatNum}>{totalTaskCount}</div><div style={s.summaryStatLabel}>Tasks</div></div>
+            <div style={s.summaryStatDivider}/>
+            <div style={s.summaryStat}><div style={s.summaryStatNum}>{totalDisplay}</div><div style={s.summaryStatLabel}>Time</div></div>
+            <div style={s.summaryStatDivider}/>
+            <div style={s.summaryStat}><div style={s.summaryStatNum}>{new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</div><div style={s.summaryStatLabel}>Now</div></div>
+          </div>
+
+          {allEntries.length === 0
+            ? <p style={{color:"#9ca3af",textAlign:"center",marginTop:48,fontSize:15}}>No tasks logged yet.</p>
+            : allEntries.map(({task,val,category},i) => (
+              <div key={i} style={s.summaryRow}>
+                <div style={{...s.summaryPill, background:BRAND_LIGHT, color:BRAND_DARK}}>{category.split(" ")[0]}</div>
+                <div style={{flex:1}}>
+                  <div style={s.summaryTaskName}>{task}</div>
+                  {val.notes && <div style={s.summaryNote}>"{val.notes}"</div>}
+                </div>
+                <div style={s.summaryTime}>{val.hours}h {val.minutes}m</div>
+              </div>
+            ))
+          }
+
+          {submitError && <div style={s.errorBox}>⚠️ {submitError}</div>}
+          {allEntries.length > 0 && (
+            <div style={{padding:"20px 16px 0"}}>
+              <button style={{...s.primaryBtn, opacity:submitting?0.6:1}} onClick={handleSubmit} disabled={submitting}>
+                {submitting ? "Submitting..." : "Submit Shift ✓"}
+              </button>
+            </div>
+          )}
+          <div style={{height:48}}/>
         </div>
       </div>
-      {loading&&!allRecs.length?(
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"80px 0"}}>
-          <div style={{width:36,height:36,borderRadius:"50%",border:"3px solid "+T.div,borderTop:"3px solid "+T.accent,animation:"spin 0.8s linear infinite"}}/>
-          <p style={{color:T.muted,marginTop:16,fontSize:15}}>Loading staff data…</p>
+    );
+  }
+
+  // ── CATEGORY (tile drill-down) ─────────────────────────────────────────────
+  if (screen === "category" && catObj) {
+    const doneInCat = catObj.category==="Other"
+      ? otherTasks.filter(t=>t.name).length
+      : catObj.items.filter(t=>logs[t]).length;
+    const pct = catObj.items.length > 0 ? Math.round((doneInCat/catObj.items.length)*100) : 0;
+
+    return (
+      <div style={s.page}>
+        <div style={s.container}>
+          <div style={s.topBar}>
+            <button style={s.backBtn} onClick={() => setScreen("home")}>← Back</button>
+            <div style={{textAlign:"right"}}>
+              <div style={s.topBarName}>{catObj.emoji} {catObj.category}</div>
+              <div style={s.topBarSub}>{staffName}</div>
+            </div>
+          </div>
+
+          {catObj.category !== "Other" && (
+            <div style={s.catProgressWrap}>
+              <div style={s.catProgressHeader}>
+                <span style={s.catProgressLabel}>{doneInCat} of {catObj.items.length} done</span>
+                <span style={s.catProgressPct}>{pct}%</span>
+              </div>
+              <div style={s.progressTrack}>
+                <div style={{...s.progressFill, width:`${pct}%`}}/>
+              </div>
+            </div>
+          )}
+
+          <p style={s.hint}>Tap a task after completing it to log your time.</p>
+
+          <div style={s.taskCard}>
+            {catObj.items.map((task,idx) => {
+              const logged = logs[task];
+              return (
+                <button key={task} style={{ ...s.taskRow, background:logged?BRAND_LIGHT:"#fff", borderTop:idx===0?"none":"1px solid #f3f4f6" }}
+                  onClick={() => openStandardTask(task)}>
+                  <div style={{...s.taskDot, background:logged?BRAND:"#e5e7eb"}}/>
+                  <span style={{...s.taskLabel, fontWeight:logged?700:500, color:logged?"#111":"#374151"}}>{task}</span>
+                  {logged
+                    ? <span style={s.taskDoneBadge}>{logged.hours}h {logged.minutes}m</span>
+                    : <span style={s.taskChevron}>›</span>}
+                </button>
+              );
+            })}
+
+            {catObj.category === "Other" && (
+              <>
+                {otherTasks.map((t,idx) => (
+                  <button key={t.id} style={{ ...s.taskRow, background:BRAND_LIGHT, borderTop:idx===0?"none":"1px solid #f3f4f6" }}
+                    onClick={() => openOtherTask(t.id)}>
+                    <div style={{...s.taskDot, background:BRAND}}/>
+                    <span style={{...s.taskLabel, fontWeight:700}}>{t.name}</span>
+                    <span style={s.taskDoneBadge}>{t.hours}h {t.minutes}m</span>
+                  </button>
+                ))}
+                <button style={{ ...s.taskRow, background:"#fafafa", borderTop:otherTasks.length>0?"1px solid #f3f4f6":"none" }}
+                  onClick={openNewOther}>
+                  <div style={{...s.taskDot, background:"#d1d5db"}}/>
+                  <span style={{...s.taskLabel, color:"#9ca3af"}}>Add a task not on the list...</span>
+                  <span style={{fontSize:20,color:"#d1d5db"}}>+</span>
+                </button>
+              </>
+            )}
+          </div>
+          <div style={{height:80}}/>
         </div>
-      ):error?(
-        <div style={{margin:16,background:T.redLight,border:"1px solid #FECACA",borderRadius:14,padding:20,color:T.red,fontSize:14}}>
-          ⚠️ {error}
-          <button onClick={load} style={{marginLeft:12,background:"none",border:"1px solid "+T.red,color:T.red,borderRadius:8,padding:"4px 12px",cursor:"pointer",fontSize:13}}>Retry</button>
-        </div>
-      ):isSubPage?(
-        subNav.type==="staffDetail"?
-          <StaffDetail name={subNav.staff} allRecs={allRecs} expDays={expDays} onNav={onNav}/>:
-          <TaskDetail task={subNav.task} staffName={subNav.staff} allRecs={allRecs}/>
-      ):bottomTab==="home"?<HomeTab allRecs={allRecs} expDays={expDays}/>:
-        bottomTab==="staff"?<StaffTab allRecs={allRecs} expDays={expDays} onNav={onNav}/>:
-        <ActionsTab/>}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#fff",borderTop:"1px solid "+T.border,display:"flex",zIndex:20,boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}}>
-        {[{id:"home",icon:"🏠",label:"Home"},{id:"staff",icon:"👥",label:"Staff"},{id:"actions",icon:"✏️",label:"Actions"}].map(function(tab){return(
-          <button key={tab.id} onClick={function(){setBottomTab(tab.id);setSubNav(null);window.scrollTo(0,0);}} style={{flex:1,background:"none",border:"none",padding:"12px 0 16px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-            <span style={{fontSize:22}}>{tab.icon}</span>
-            <span style={{fontSize:11,fontWeight:700,color:bottomTab===tab.id?T.accent:T.muted}}>{tab.label}</span>
-            {bottomTab===tab.id&&!isSubPage && <div style={{width:20,height:3,borderRadius:99,background:T.accent,marginTop:1}}/>}
-          </button>
-        );})}
+
+        {activeTask && (
+          <TaskModal activeTask={activeTask} catColor={BRAND} inputHours={inputHours} setInputHours={setInputHours}
+            inputMinutes={inputMinutes} setInputMinutes={setInputMinutes} inputNotes={inputNotes} setInputNotes={setInputNotes}
+            inputOtherName={inputOtherName} setInputOtherName={setInputOtherName}
+            logs={logs} onSave={saveTask} onRemove={removeTask} onClose={() => setActiveTask(null)}/>
+        )}
       </div>
-      <style>{"@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{display:none}"}</style>
+    );
+  }
+
+  // ── HOME ──────────────────────────────────────────────────────────────────
+  const tileData = TASK_CATEGORIES.map(cat => {
+    const done = cat.category==="Other" ? otherTasks.filter(t=>t.name).length : cat.items.filter(t=>logs[t]).length;
+    const total = cat.items.length;
+    return { ...cat, done, total, pct: total>0 ? done/total : 0 };
+  });
+
+  return (
+    <div style={s.page}>
+      <div style={s.container}>
+
+        {/* Header */}
+        <div style={s.homeHeader}>
+          <div style={s.homeTitleRow}>
+            <div style={s.logoMarkSm}>⚡</div>
+            <div>
+              <div style={s.homeGreeting}>Hello, {staffName}</div>
+              <div style={s.homeDate}>{today}</div>
+            </div>
+          </div>
+          <div style={s.homeActions}>
+            {totalTaskCount > 0 && (
+              <button style={s.reviewChip} onClick={() => setScreen("summary")}>Review</button>
+            )}
+            <button style={s.signOutChip} onClick={handleSignOut} title="Sign out">⏻</button>
+          </div>
+        </div>
+
+        {/* ── HOURS PROGRESS BAR ── */}
+        <div style={s.hoursCard}>
+          <div style={s.hoursCardHeader}>
+            <div>
+              <div style={s.hoursCardTitle}>Today's Progress</div>
+              <div style={s.hoursCardSub}>{dayName} · {SHIFT_HOURS}h shift</div>
+            </div>
+            <div style={s.hoursCardRight}>
+              <span style={s.hoursLogged}>{totalDisplay}</span>
+              <span style={s.hoursTarget}> / {SHIFT_HOURS}h</span>
+            </div>
+          </div>
+
+          {/* Bar */}
+          <div style={s.hoursTrack}>
+            <div style={{
+              ...s.hoursFill,
+              width: `${progressPct}%`,
+              background: progressPct >= 100 ? "#22c55e" : BRAND,
+            }}/>
+            {/* Hour markers */}
+            {Array.from({length: SHIFT_HOURS - 1}, (_,i) => (
+              <div key={i} style={{ ...s.hourMarker, left:`${((i+1)/SHIFT_HOURS)*100}%` }}/>
+            ))}
+          </div>
+
+          {/* Hour labels */}
+          <div style={s.hoursLabels}>
+            <span>0h</span>
+            {Array.from({length: SHIFT_HOURS - 1}, (_,i) => (
+              <span key={i}>{i+1}h</span>
+            ))}
+            <span>{SHIFT_HOURS}h</span>
+          </div>
+
+          {progressPct >= 100 && (
+            <div style={s.hoursComplete}>🎉 Full shift logged!</div>
+          )}
+        </div>
+
+        {/* View toggle */}
+        <div style={s.toggleRow}>
+          <button style={{...s.toggleBtn, background:viewMode==="checklist"?BRAND:"#f3f4f6", color:viewMode==="checklist"?"#fff":"#6b7280"}}
+            onClick={() => setViewMode("checklist")}>☑ Today's Tasks</button>
+          <button style={{...s.toggleBtn, background:viewMode==="tiles"?BRAND:"#f3f4f6", color:viewMode==="tiles"?"#fff":"#6b7280"}}
+            onClick={() => setViewMode("tiles")}>⊞ All Categories</button>
+        </div>
+
+        {/* ── CHECKLIST VIEW ── */}
+        {viewMode === "checklist" && (
+          <div style={{padding:"0 16px"}}>
+
+            {/* Today's task progress */}
+            <div style={s.checklistHeader}>
+              <span style={s.checklistHeaderText}>{todayDone} of {todayTasks.length} today's tasks done</span>
+              <span style={s.checklistHeaderPct}>{todayTasks.length > 0 ? Math.round((todayDone/todayTasks.length)*100) : 0}%</span>
+            </div>
+
+            {/* Today's scheduled tasks */}
+            {todayTasks.length > 0 ? (
+              <div style={s.taskCard}>
+                {todayTasks.map((task, idx) => {
+                  const logged = logs[task];
+                  return (
+                    <button key={task} style={{
+                      ...s.checkRow,
+                      background: logged ? BRAND_LIGHT : "#fff",
+                      borderTop: idx===0 ? "none" : "1px solid #f3f4f6",
+                    }} onClick={() => openStandardTask(task)}>
+                      <div style={{
+                        ...s.checkbox,
+                        background: logged ? BRAND : "transparent",
+                        borderColor: logged ? BRAND : "#d1d5db",
+                      }}>
+                        {logged && <span style={s.checkmark}>✓</span>}
+                      </div>
+                      <span style={{...s.checkTaskName, color:logged?"#111":"#374151", fontWeight:logged?700:500}}>
+                        {task}
+                      </span>
+                      {logged
+                        ? <span style={s.checkTimeBadge}>{logged.hours}h {logged.minutes}m</span>
+                        : <span style={s.taskChevron}>›</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{color:"#9ca3af",textAlign:"center",padding:"32px 0",fontSize:14}}>
+                No tasks scheduled today.
+              </p>
+            )}
+
+            {/* Other / extra tasks */}
+            <div style={{marginTop:16}}>
+              <div style={s.checklistHeader}>
+                <span style={s.checklistHeaderText}>➕ Additional Tasks</span>
+                <span style={s.checklistHeaderPct}>{otherTasks.filter(t=>t.name).length} added</span>
+              </div>
+              <div style={s.taskCard}>
+                {otherTasks.filter(t=>t.name).map((t,idx) => (
+                  <button key={t.id} style={{
+                    ...s.checkRow, background:BRAND_LIGHT,
+                    borderTop: idx===0?"none":"1px solid #f3f4f6",
+                  }} onClick={() => openOtherTask(t.id)}>
+                    <div style={{...s.checkbox, background:BRAND, borderColor:BRAND}}>
+                      <span style={s.checkmark}>✓</span>
+                    </div>
+                    <span style={{...s.checkTaskName, color:"#111", fontWeight:700}}>{t.name}</span>
+                    <span style={s.checkTimeBadge}>{t.hours}h {t.minutes}m</span>
+                  </button>
+                ))}
+                <button style={{
+                  ...s.checkRow, background:"#fafafa",
+                  borderTop: otherTasks.filter(t=>t.name).length>0?"1px solid #f3f4f6":"none",
+                }} onClick={openNewOther}>
+                  <div style={{...s.checkbox, background:"transparent", borderColor:"#d1d5db"}}>
+                    <span style={{color:"#d1d5db",fontSize:14,fontWeight:700}}>+</span>
+                  </div>
+                  <span style={{...s.checkTaskName, color:"#9ca3af"}}>Add a task not on the list...</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── TILE VIEW ── */}
+        {viewMode === "tiles" && (
+          <div style={s.tileGrid}>
+            {tileData.map(cat => (
+              <button key={cat.category} style={s.tile}
+                onClick={() => { setActiveCategory(cat.category); setScreen("category"); }}>
+                <div style={s.tileTopRow}>
+                  <span style={s.tileEmoji}>{cat.emoji}</span>
+                  {cat.done > 0 && <span style={s.tileDoneBadge}>{cat.done}{cat.total?`/${cat.total}`:""}</span>}
+                </div>
+                <div style={s.tileCatName}>{cat.category}</div>
+                <div style={s.tileCatSub}>
+                  {cat.category==="Other" ? (cat.done>0?`${cat.done} added`:"Tap to add") : `${cat.done} of ${cat.total} done`}
+                </div>
+                {cat.total > 0 && (
+                  <div style={s.tileProgressTrack}>
+                    <div style={{...s.tileProgressFill, width:`${cat.pct*100}%`, background:cat.done>0?BRAND:"#e5e7eb"}}/>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{height:80}}/>
+      </div>
+
+      {/* MODAL — home screen */}
+      {activeTask && (screen==="home") && (
+        <TaskModal activeTask={activeTask} catColor={BRAND} inputHours={inputHours} setInputHours={setInputHours}
+          inputMinutes={inputMinutes} setInputMinutes={setInputMinutes} inputNotes={inputNotes} setInputNotes={setInputNotes}
+          inputOtherName={inputOtherName} setInputOtherName={setInputOtherName}
+          logs={logs} onSave={saveTask} onRemove={removeTask} onClose={() => setActiveTask(null)}/>
+      )}
     </div>
   );
 }
+
+// ─── TASK MODAL ───────────────────────────────────────────────────────────────
+function TaskModal({ activeTask, catColor, inputHours, setInputHours, inputMinutes, setInputMinutes,
+  inputNotes, setInputNotes, inputOtherName, setInputOtherName, logs, onSave, onRemove, onClose }) {
+  const isOtherNew    = activeTask.startsWith("other-new-");
+  const isOther       = activeTask.startsWith("other-");
+  const isExistingOther = isOther && !isOtherNew;
+  const hasExisting   = logs[activeTask] || isExistingOther;
+  const canSave       = (inputHours||inputMinutes) && (!isOther||inputOtherName.trim());
+
+  return (
+    <div style={s.modalOverlay} onClick={onClose}>
+      <div style={s.modal} onClick={e=>e.stopPropagation()}>
+        <div style={{...s.modalAccentBar, background:catColor}}/>
+        {isOther ? (
+          <>
+            <label style={s.modalFieldLabel}>What task did you do?</label>
+            <input style={s.modalTextInput} type="text" placeholder="e.g. Window cleaning..." value={inputOtherName} onChange={e=>setInputOtherName(e.target.value)} autoFocus/>
+          </>
+        ) : (
+          <h3 style={s.modalTitle}>{activeTask}</h3>
+        )}
+        <p style={s.modalSub}>How long did this take?</p>
+        <div style={s.timeRow}>
+          <div style={s.timeCol}>
+            <label style={s.timeLabel}>Hours</label>
+            <input style={s.timeInput} type="number" min="0" max="12" placeholder="0" value={inputHours} onChange={e=>setInputHours(e.target.value)}/>
+          </div>
+          <div style={s.timeSep}>:</div>
+          <div style={s.timeCol}>
+            <label style={s.timeLabel}>Minutes</label>
+            <input style={s.timeInput} type="number" min="0" max="59" placeholder="0" value={inputMinutes} onChange={e=>setInputMinutes(e.target.value)}/>
+          </div>
+        </div>
+        <label style={s.modalFieldLabel}>Notes (optional)</label>
+        <input style={s.modalTextInput} type="text" placeholder="Any issues or comments..." value={inputNotes} onChange={e=>setInputNotes(e.target.value)}/>
+        <div style={s.modalBtnRow}>
+          {hasExisting && <button style={s.removeBtn} onClick={onRemove}>Remove</button>}
+          <button style={{...s.primaryBtn, flex:1, opacity:canSave?1:0.35, marginBottom:0, background:catColor}} onClick={onSave}>
+            Save Task
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── STYLES ──────────────────────────────────────────────────────────────────
+const s = {
+  page: { minHeight:"100vh", background:"#f9fafb", fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif", display:"flex", justifyContent:"center" },
+  container: { width:"100%", maxWidth:480 },
+  authWrap: { background:"#fff", borderRadius:24, padding:"36px 28px 40px", margin:"40px 16px", boxShadow:"0 4px 32px rgba(0,0,0,0.07)", maxWidth:420, width:"100%" },
+  authHeader: { display:"flex", alignItems:"center", gap:14, marginBottom:20 },
+  logoMark: { width:46,height:46,background:"#111",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 },
+  logoName: { fontSize:22,fontWeight:800,color:"#111",letterSpacing:-0.5 },
+  logoStore: { fontSize:12,color:"#9ca3af",marginTop:1 },
+  authTitle: { fontSize:18,fontWeight:700,color:"#111",marginBottom:16,marginTop:0 },
+  expiredBanner: { background:"#fff7ed",border:"1px solid #fed7aa",color:"#c2410c",borderRadius:10,padding:"12px 14px",fontSize:13,marginBottom:16,lineHeight:1.5 },
+  staffGrid: { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 },
+  staffTile: { background:"#f9fafb",border:"2px solid #e5e7eb",borderRadius:16,padding:"18px 8px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8 },
+  staffAvatar: { width:48,height:48,borderRadius:"50%",background:BRAND,color:"#fff",fontWeight:800,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center" },
+  staffTileName: { fontWeight:700,fontSize:14,color:"#111" },
+  staffShiftLabel: { fontSize:11,color:"#9ca3af",textTransform:"capitalize" },
+  textBtn: { background:"none",border:"none",color:"#9ca3af",fontSize:14,fontWeight:600,cursor:"pointer",padding:0,marginBottom:24,display:"block" },
+  pinAvatarLarge: { width:70,height:70,borderRadius:"50%",background:BRAND,color:"#fff",fontWeight:800,fontSize:22,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px" },
+  pinStaffName: { fontSize:22,fontWeight:800,color:"#111",textAlign:"center",marginBottom:4 },
+  pinSub: { color:"#9ca3af",fontSize:14,textAlign:"center",marginBottom:24 },
+  pinDots: { display:"flex",justifyContent:"center",gap:14,marginBottom:8 },
+  pinDot: { width:16,height:16,borderRadius:"50%" },
+  pinErrMsg: { color:"#ef4444",fontSize:13,textAlign:"center",marginBottom:12 },
+  numpad: { display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginTop:20 },
+  numKey: { background:"#f3f4f6",border:"none",borderRadius:14,padding:"18px 0",fontSize:22,fontWeight:700,color:"#111",cursor:"pointer" },
+  topBar: { display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 16px 14px",background:"#fff",borderBottom:"1px solid #f3f4f6",position:"sticky",top:0,zIndex:10 },
+  topBarName: { fontWeight:700,fontSize:15,color:"#111" },
+  topBarSub: { fontSize:12,color:"#9ca3af",marginTop:2 },
+  backBtn: { background:"none",border:"none",color:"#111",fontSize:14,fontWeight:700,cursor:"pointer",padding:0 },
+  homeHeader: { display:"flex",justifyContent:"space-between",alignItems:"center",padding:"20px 16px 0" },
+  homeTitleRow: { display:"flex",alignItems:"center",gap:10 },
+  logoMarkSm: { width:36,height:36,background:"#111",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 },
+  homeGreeting: { fontSize:17,fontWeight:800,color:"#111" },
+  homeDate: { fontSize:11,color:"#9ca3af",marginTop:2 },
+  homeActions: { display:"flex",gap:8,alignItems:"center" },
+  reviewChip: { background:BRAND,color:"#fff",border:"none",padding:"8px 14px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer" },
+  signOutChip: { background:"#f3f4f6",color:"#6b7280",border:"none",width:36,height:36,borderRadius:"50%",fontSize:16,cursor:"pointer" },
+
+  // Hours progress card
+  hoursCard: { margin:"16px 16px 0",background:"#fff",borderRadius:16,padding:"16px",border:"1px solid #f3f4f6",boxShadow:"0 2px 8px rgba(0,0,0,0.04)" },
+  hoursCardHeader: { display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12 },
+  hoursCardTitle: { fontSize:14,fontWeight:800,color:"#111" },
+  hoursCardSub: { fontSize:12,color:"#9ca3af",marginTop:2 },
+  hoursCardRight: { textAlign:"right" },
+  hoursLogged: { fontSize:20,fontWeight:800,color:BRAND },
+  hoursTarget: { fontSize:14,color:"#9ca3af",fontWeight:600 },
+  hoursTrack: { height:14,background:"#f3f4f6",borderRadius:99,overflow:"visible",position:"relative",marginBottom:6 },
+  hoursFill: { height:"100%",borderRadius:99,transition:"width 0.5s ease",position:"relative",zIndex:1 },
+  hourMarker: { position:"absolute",top:0,bottom:0,width:2,background:"#fff",zIndex:2,transform:"translateX(-50%)" },
+  hoursLabels: { display:"flex",justifyContent:"space-between",fontSize:10,color:"#9ca3af",fontWeight:600,marginTop:4 },
+  hoursComplete: { textAlign:"center",fontSize:13,fontWeight:700,color:"#16a34a",marginTop:8 },
+
+  toggleRow: { display:"flex",gap:8,padding:"14px 16px 4px" },
+  toggleBtn: { flex:1,border:"none",borderRadius:10,padding:"10px 0",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.18s" },
+
+  // Checklist
+  checklistHeader: { display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingLeft:2 },
+  checklistHeaderText: { fontSize:13,fontWeight:700,color:"#374151" },
+  checklistHeaderPct: { fontSize:13,fontWeight:700,color:BRAND },
+  checkRow: { width:"100%",display:"flex",alignItems:"center",gap:12,padding:"15px 16px",border:"none",cursor:"pointer",textAlign:"left" },
+  checkbox: { width:24,height:24,borderRadius:7,border:"2px solid",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center" },
+  checkmark: { color:"#fff",fontSize:13,fontWeight:800 },
+  checkTaskName: { flex:1,fontSize:15 },
+  checkTimeBadge: { fontSize:12,fontWeight:700,color:BRAND_DARK,background:BRAND_LIGHT,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap" },
+
+  // Tiles
+  tileGrid: { display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,padding:"8px 16px 0" },
+  tile: { background:"#fff",border:"1.5px solid #f3f4f6",borderRadius:16,padding:"18px 14px",cursor:"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,0.05)" },
+  tileTopRow: { display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10 },
+  tileEmoji: { fontSize:26 },
+  tileDoneBadge: { background:BRAND,color:"#fff",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20 },
+  tileCatName: { fontWeight:800,fontSize:14,color:"#111",marginBottom:3 },
+  tileCatSub: { fontSize:12,color:"#9ca3af",marginBottom:10 },
+  tileProgressTrack: { height:5,background:"#f3f4f6",borderRadius:99,overflow:"hidden" },
+  tileProgressFill: { height:"100%",borderRadius:99,transition:"width 0.4s ease" },
+
+  // Category view
+  catProgressWrap: { margin:"12px 16px 0",background:"#fff",borderRadius:12,padding:"14px 16px",border:"1px solid #f3f4f6" },
+  catProgressHeader: { display:"flex",justifyContent:"space-between",marginBottom:8 },
+  catProgressLabel: { fontSize:13,fontWeight:600,color:"#374151" },
+  catProgressPct: { fontSize:13,fontWeight:700,color:BRAND },
+  progressTrack: { height:8,background:"#f3f4f6",borderRadius:99,overflow:"hidden" },
+  progressFill: { height:"100%",background:BRAND,borderRadius:99,transition:"width 0.4s ease" },
+  hint: { color:"#9ca3af",fontSize:13,padding:"10px 16px 4px" },
+  taskCard: { margin:"0 16px",borderRadius:14,overflow:"hidden",border:"1px solid #f3f4f6",background:"#fff",boxShadow:"0 2px 8px rgba(0,0,0,0.04)" },
+  taskRow: { width:"100%",display:"flex",alignItems:"center",gap:12,padding:"16px",border:"none",cursor:"pointer",textAlign:"left" },
+  taskDot: { width:10,height:10,borderRadius:"50%",flexShrink:0 },
+  taskLabel: { flex:1,fontSize:15 },
+  taskDoneBadge: { background:BRAND,color:"#fff",fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,whiteSpace:"nowrap" },
+  taskChevron: { fontSize:20,color:"#d1d5db" },
+
+  // Summary
+  sectionPad: { padding:"20px 16px 8px" },
+  pageTitle: { fontSize:22,fontWeight:800,color:"#111" },
+  summaryStatsRow: { display:"flex",margin:"8px 16px 0",background:"#111",borderRadius:14,padding:"18px 0",justifyContent:"space-around" },
+  summaryStat: { textAlign:"center" },
+  summaryStatNum: { color:"#fff",fontSize:22,fontWeight:800 },
+  summaryStatLabel: { color:"#6b7280",fontSize:11,marginTop:2 },
+  summaryStatDivider: { width:1,background:"#374151" },
+  summaryRow: { display:"flex",alignItems:"flex-start",gap:10,background:"#fff",margin:"6px 16px 0",padding:"14px 16px",borderRadius:12,border:"1px solid #f3f4f6" },
+  summaryPill: { fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:20,whiteSpace:"nowrap",alignSelf:"flex-start",marginTop:2 },
+  summaryTaskName: { fontWeight:700,fontSize:14,color:"#111",flex:1 },
+  summaryNote: { fontSize:12,color:"#6b7280",marginTop:3,fontStyle:"italic" },
+  summaryTime: { fontWeight:700,fontSize:14,color:"#374151",whiteSpace:"nowrap" },
+
+  // Done
+  successIcon: { fontSize:60,textAlign:"center",marginBottom:12 },
+  successTitle: { fontSize:24,fontWeight:800,color:"#111",textAlign:"center",marginBottom:6 },
+  successName: { fontSize:16,fontWeight:600,color:"#374151",textAlign:"center" },
+  successDate: { fontSize:13,color:"#9ca3af",textAlign:"center",marginBottom:16 },
+  successStats: { display:"flex",background:"#f9fafb",borderRadius:14,padding:"16px 0",justifyContent:"space-around",marginBottom:16 },
+  successStat: { textAlign:"center" },
+  successStatNum: { fontSize:22,fontWeight:800,color:"#111" },
+  successStatLabel: { fontSize:12,color:"#9ca3af",marginTop:2 },
+  successStatDivider: { width:1,background:"#e5e7eb" },
+  successMsg: { color:"#9ca3af",fontSize:13,textAlign:"center",marginBottom:24 },
+
+  primaryBtn: { display:"block",width:"100%",background:BRAND,color:"#fff",border:"none",padding:"16px",borderRadius:12,fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:10 },
+  outlineBtn: { display:"block",width:"100%",background:"transparent",color:"#9ca3af",border:"1.5px solid #e5e7eb",padding:"14px",borderRadius:12,fontSize:15,fontWeight:600,cursor:"pointer" },
+  errorBox: { background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:10,padding:"12px 16px",margin:"12px 16px 0",fontSize:13 },
+
+  modalOverlay: { position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:100 },
+  modal: { background:"#fff",borderRadius:"20px 20px 0 0",padding:"0 24px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 32px rgba(0,0,0,0.15)",overflow:"hidden" },
+  modalAccentBar: { height:5,margin:"0 -24px 20px" },
+  modalTitle: { fontSize:18,fontWeight:800,color:"#111",margin:"0 0 4px" },
+  modalFieldLabel: { display:"block",fontSize:13,fontWeight:600,color:"#374151",marginBottom:8 },
+  modalSub: { color:"#9ca3af",fontSize:13,marginBottom:16 },
+  modalTextInput: { width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #e5e7eb",fontSize:15,marginBottom:16,boxSizing:"border-box",color:"#111" },
+  timeRow: { display:"flex",alignItems:"center",gap:8,marginBottom:16 },
+  timeCol: { flex:1 },
+  timeLabel: { display:"block",fontSize:12,fontWeight:600,color:"#9ca3af",marginBottom:6 },
+  timeInput: { width:"100%",padding:"14px 10px",borderRadius:10,border:"1.5px solid #e5e7eb",fontSize:24,fontWeight:800,textAlign:"center",color:"#111",boxSizing:"border-box" },
+  timeSep: { fontSize:24,fontWeight:700,color:"#d1d5db",marginTop:18 },
+  modalBtnRow: { display:"flex",gap:10,marginTop:4 },
+  removeBtn: { background:"#fef2f2",color:"#ef4444",border:"none",padding:"16px",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer" },
+};
