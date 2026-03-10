@@ -184,11 +184,16 @@ async function fetchScheduleFromAirtable(shopId, sector, staffNames) {
     return rows;
   }
 
-  let rows = await fetchWithFilter(`{Shop ID}="${shopId}"`);
-  // If Shop ID is a linked field and nothing matched, fall back to Staff Name filter
-  if (rows.length === 0 && staffNames && staffNames.length > 0) {
-    const orClauses = staffNames.map(n => `{Staff Name}="${n}"`).join(",");
-    rows = await fetchWithFilter(`OR(${orClauses})`);
+  let rows = [];
+  // Skip Shop ID filter (likely a linked field - causes 422). Use Staff Name filter directly.
+  if (staffNames && staffNames.length > 0) {
+    try {
+      const orClauses = staffNames.map(n => `{Staff Name}="${n}"`).join(",");
+      rows = await fetchWithFilter(`OR(${orClauses})`);
+    } catch(e) { console.warn("Schedule fetch by staff name failed:", e); }
+  }
+  if (rows.length === 0) {
+    try { rows = await fetchWithFilter(`{Shop ID}="${shopId}"`); } catch(e) {}
   }
 
   const template = SECTOR_TASKS[sector] || SECTOR_TASKS.convenience;
