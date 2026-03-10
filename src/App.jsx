@@ -156,12 +156,16 @@ async function fetchShopConfig(shopId) {
   const d = await r.json();
   if (!d.records.length) throw new Error(`Shop "${shopId}" not found. Check the URL.`);
   const rec = d.records[0].fields;
+  let absences = {};
+  try { absences = JSON.parse(rec["Absences"] || "{}"); } catch {}
   return {
+    id:         d.records[0].id,
     shopId:     rec["Shop ID"],
     shopName:   rec["Shop Name"] || shopId,
     sector:     (rec["Sector"] || "convenience").toLowerCase(),
     shiftHours: parseInt(rec["Shift Hours"] || 6),
     staff:      JSON.parse(rec["Staff"] || "[]"),
+    absences,
   };
 }
 
@@ -189,10 +193,17 @@ async function fetchScheduleFromAirtable(shopId, sector) {
     const staff = r.fields["Staff Name"];
     const day   = r.fields["Day"];
     const tasks = r.fields["Tasks"];
+    const shiftStart = r.fields["Shift Start"] || "";
+    const shiftEnd   = r.fields["Shift End"]   || "";
     if (staff && day && tasks) {
       try {
         if (!sched[day]) sched[day] = {};
         sched[day][staff] = JSON.parse(tasks);
+        // store times under a _times sub-key
+        if (!sched[day]._times) sched[day]._times = {};
+        if (shiftStart || shiftEnd) {
+          sched[day]._times[staff] = { start: shiftStart, end: shiftEnd };
+        }
       } catch {}
     }
   });
@@ -530,6 +541,33 @@ export default function App() {
   const todayDayName = getTodayDayName();
   const todayTasks   = (schedule && staffName) ? (schedule[todayDayName]?.[staffName] || schedule[todayDayName]?._all || []) : [];
   const todayDone    = todayTasks.filter(t => logs[t]).length;
+
+  // ── Upcoming shift & full week view ──
+  const ALL_WEEK_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const upcomingShift = useMemo(() => {
+    if (!schedule) return null;
+    const todayIdx = ALL_WEEK_DAYS.indexOf(todayDayName);
+    for (let i = 1; i <= 7; i++) {
+      const nextDay = ALL_WEEK_DAYS[(todayIdx + i) % 7];
+      const tasks = schedule[nextDay]?.[staffName] || schedule[nextDay]?._all || [];
+      if (tasks.length > 0) {
+        const times = schedule[nextDay]?._times?.[staffName] || null;
+        return { day: nextDay, tasks, times };
+      }
+    }
+    return null;
+  }, [schedule, staffName, todayDayName]);
+
+  const weekSchedule = useMemo(() => {
+    if (!schedule || !shopConfig) return [];
+    return ALL_WEEK_DAYS.map(day => {
+      const tasks = schedule[day]?.[staffName] || schedule[day]?._all || [];
+      const times = schedule[day]?._times?.[staffName] || null;
+      // get all absences for this staff member keyed by date
+      const absences = shopConfig.absences?.[staffName] || [];
+      return { day, tasks, times, absences };
+    });
+  }, [schedule, staffName, shopConfig]);
 
   // ── PIN handler ──
   const handlePinPress = (d) => {
@@ -900,12 +938,37 @@ export default function App() {
           {progressPct >= 100 && <div style={s.hoursComplete}>🎉 Full shift logged!</div>}
         </div>
 
+        {/* Upcoming shift */}
+        {upcomingShift && (
+          <div style={{margin:"10px 16px 0",background:"#fff",borderRadius:14,border:"1px solid #f3f4f6",padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.03)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:800,color:"#111"}}>📅 Next Shift · {upcomingShift.day}</div>
+                <div style={{fontSize:12,color:"#9ca3af",marginTop:1}}>
+                  {upcomingShift.times?.start ? `🕐 ${upcomingShift.times.start}${upcomingShift.times.end?` – ${upcomingShift.times.end}`:""}  ·  ` : ""}{upcomingShift.tasks.length} task{upcomingShift.tasks.length!==1?"s":""} scheduled
+                </div>
+              </div>
+              <div style={{background:BRAND_LIGHT,color:BRAND_DARK,fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20}}>{upcomingShift.day.slice(0,3)}</div>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {upcomingShift.tasks.slice(0,5).map(t=>(
+                <span key={t} style={{background:"#f3f4f6",color:"#6b7280",fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20}}>{t}</span>
+              ))}
+              {upcomingShift.tasks.length>5&&(
+                <span style={{background:"#f3f4f6",color:"#9ca3af",fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20}}>+{upcomingShift.tasks.length-5} more</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* View toggle */}
         <div style={s.toggleRow}>
           <button style={{...s.toggleBtn,background:viewMode==="checklist"?BRAND:"#f3f4f6",color:viewMode==="checklist"?"#fff":"#6b7280"}}
-            onClick={() => { setViewMode("checklist"); setTileSearch(""); }}>☑ Today's Tasks</button>
+            onClick={() => { setViewMode("checklist"); setTileSearch(""); }}>☑ Today</button>
           <button style={{...s.toggleBtn,background:viewMode==="tiles"?BRAND:"#f3f4f6",color:viewMode==="tiles"?"#fff":"#6b7280"}}
-            onClick={() => setViewMode("tiles")}>⊞ All Categories</button>
+            onClick={() => setViewMode("tiles")}>⊞ Categories</button>
+          <button style={{...s.toggleBtn,background:viewMode==="week"?BRAND:"#f3f4f6",color:viewMode==="week"?"#fff":"#6b7280"}}
+            onClick={() => { setViewMode("week"); setTileSearch(""); }}>📅 My Week</button>
         </div>
 
         {/* Checklist view */}
@@ -1035,6 +1098,42 @@ export default function App() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {viewMode === "week" && (
+          <div style={{padding:"8px 16px 0"}}>
+            {weekSchedule.map(({day, tasks, times, absences}) => {
+              const isToday = day === todayDayName;
+              const now = new Date();
+              const upcomingAbsForDay = absences.filter(a => {
+                const d = new Date(a.date + "T12:00:00");
+                const diff = (d - now) / (1000*60*60*24);
+                return diff >= -1 && diff <= 14 && new Date(a.date + "T12:00:00").toLocaleDateString("en-GB",{weekday:"long"}) === day;
+              });
+              return (
+                <div key={day} style={{marginBottom:10,opacity:tasks.length===0&&!upcomingAbsForDay.length?0.4:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:6}}>
+                    <div style={{fontSize:13,fontWeight:800,color:isToday?BRAND:"#374151"}}>{day}</div>
+                    {isToday&&<span style={{background:BRAND,color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20}}>TODAY</span>}
+                    {times?.start&&<span style={{background:"#f3f4f6",color:"#6b7280",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20}}>🕐 {times.start}{times.end?` – ${times.end}`:""}</span>}
+                    {upcomingAbsForDay.map((a,i)=>{
+                      const tc={absent:{bg:"#fef2f2",col:"#dc2626",label:"Absent"},holiday:{bg:"#eff6ff",col:"#2563eb",label:"Holiday"},sick:{bg:"#fffbeb",col:"#d97706",label:"Sick"},late:{bg:"#f5f3ff",col:"#7c3aed",label:"Late"}}[a.type]||{bg:"#fef2f2",col:"#dc2626",label:"Absent"};
+                      return <span key={i} style={{background:tc.bg,color:tc.col,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20}}>{tc.label} · {new Date(a.date+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</span>;
+                    })}
+                  </div>
+                  {tasks.length > 0 ? (
+                    <div style={{background:"#fff",borderRadius:12,border:`1.5px solid ${isToday?BRAND+"50":"#f0f0f0"}`,padding:"10px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
+                      {tasks.map(t=>(
+                        <span key={t} style={{background:isToday?BRAND_LIGHT:"#f3f4f6",color:isToday?BRAND_DARK:"#374151",fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20}}>{t}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{background:"#fafafa",borderRadius:12,border:"1px solid #f3f4f6",padding:"10px 14px",fontSize:13,color:"#9ca3af"}}>No tasks scheduled</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
         <div style={{height:80}}/>
