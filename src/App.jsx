@@ -149,9 +149,8 @@ function getCategoryForTask(task, sector) {
 
 // ─── AIRTABLE: FETCH SHOP CONFIG ─────────────────────────────────────────────
 async function fetchShopConfig(shopId) {
-  const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_SHOPS_ID}`);
-  url.searchParams.set("filterByFormula", `{Shop ID}="${shopId}"`);
-  const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_SHOPS_ID}?filterByFormula=${encodeURIComponent(`{Shop ID}="${shopId}"`)}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
   if (!r.ok) throw new Error("Could not load shop config");
   const d = await r.json();
   if (!d.records.length) throw new Error(`Shop "${shopId}" not found. Check the URL.`);
@@ -170,25 +169,30 @@ async function fetchShopConfig(shopId) {
 }
 
 // ─── AIRTABLE: FETCH LIVE SCHEDULE ───────────────────────────────────────────
-async function fetchScheduleFromAirtable(shopId, sector) {
-  let rows = [], offset = null;
-  do {
-    const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TASKS_ID}`);
-    url.searchParams.set("pageSize", "100");
-    url.searchParams.set("filterByFormula", `{Shop ID}="${shopId}"`);
-    if (offset) url.searchParams.set("offset", offset);
-    const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
-    if (!r.ok) throw new Error("Schedule fetch failed");
-    const d = await r.json();
-    rows = [...rows, ...d.records];
-    offset = d.offset || null;
-  } while (offset);
+async function fetchScheduleFromAirtable(shopId, sector, staffNames) {
+  async function fetchWithFilter(formula) {
+    let rows = [], offset = null;
+    do {
+      let url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TASKS_ID}?pageSize=100&filterByFormula=${encodeURIComponent(formula)}`;
+      if (offset) url += `&offset=${encodeURIComponent(offset)}`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
+      if (!r.ok) throw new Error("Schedule fetch failed");
+      const d = await r.json();
+      rows = [...rows, ...d.records];
+      offset = d.offset || null;
+    } while (offset);
+    return rows;
+  }
 
-  // Build default from sector template
+  let rows = await fetchWithFilter(`{Shop ID}="${shopId}"`);
+  // If Shop ID is a linked field and nothing matched, fall back to Staff Name filter
+  if (rows.length === 0 && staffNames && staffNames.length > 0) {
+    const orClauses = staffNames.map(n => `{Staff Name}="${n}"`).join(",");
+    rows = await fetchWithFilter(`OR(${orClauses})`);
+  }
+
   const template = SECTOR_TASKS[sector] || SECTOR_TASKS.convenience;
   const sched = JSON.parse(JSON.stringify(template));
-
-  // Override with Airtable data
   rows.forEach(r => {
     const staff = r.fields["Staff Name"];
     const day   = r.fields["Day"];
@@ -460,7 +464,7 @@ export default function App() {
   useEffect(() => {
     if (!shopConfig) return;
     setScheduleLoading(true);
-    fetchScheduleFromAirtable(shopConfig.shopId, shopConfig.sector)
+    fetchScheduleFromAirtable(shopConfig.shopId, shopConfig.sector, shopConfig.staff.map(s=>s.name))
       .then(s => { setSchedule(s); setScheduleLoading(false); })
       .catch(() => {
         setSchedule(SECTOR_TASKS[shopConfig.sector] || SECTOR_TASKS.convenience);
@@ -498,7 +502,7 @@ export default function App() {
     try {
       const [freshConfig, freshSchedule] = await Promise.all([
         fetchShopConfig(shopConfig.shopId),
-        fetchScheduleFromAirtable(shopConfig.shopId, shopConfig.sector),
+        fetchScheduleFromAirtable(shopConfig.shopId, shopConfig.sector, shopConfig.staff.map(s=>s.name)),
       ]);
       setShopConfig(freshConfig);
       setSchedule(freshSchedule);
