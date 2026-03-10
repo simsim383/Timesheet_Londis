@@ -198,7 +198,7 @@ async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, 
         body: JSON.stringify({ records: records.slice(i, i + 10) }),
       }
     );
-    if (!res.ok) { const e = await res.json(); throw new Error(e?.error?.message || "Airtable error"); }
+    if (!res.ok) { const e = await res.json(); throw new Error(e?.error?.message || "Submission failed"); }
   }
 }
 
@@ -282,7 +282,7 @@ function ErrorScreen({ message }) {
           ⚠️ {message}
         </div>
         <p style={{ color: "#9ca3af", fontSize: 14, marginTop: 16 }}>
-          Check the URL includes <strong>?shop=your_shop_id</strong> and that the shop exists in Airtable.
+          Check the URL includes <strong>?shop=your_shop_id</strong> and that the shop exists in our system.
         </p>
       </div>
     </div>
@@ -589,7 +589,7 @@ export default function App() {
         )}
         {scheduleError && (
           <div style={{ ...s.expiredBanner, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a" }}>
-            📋 Using saved schedule — couldn't reach Airtable.
+            📋 Using saved schedule — couldn't reach the server.
           </div>
         )}
 
