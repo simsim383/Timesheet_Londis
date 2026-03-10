@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 // ─── BRAND ───────────────────────────────────────────────────────────────────
 const BRAND       = "#E07B39";
