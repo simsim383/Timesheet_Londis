@@ -417,6 +417,7 @@ export default function App() {
   // ── Task state ──
   const [viewMode, setViewMode]             = useState("checklist");
   const [expandedDay, setExpandedDay]       = useState(null);
+  const [weekRefreshing, setWeekRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
   const [logs, setLogs]                     = useState({});
   const [otherTasks, setOtherTasks]         = useState([]);
@@ -488,6 +489,21 @@ export default function App() {
       saveTodayData(shopConfig.shopId, staffName, logs, otherTasks);
     }
   }, [logs, otherTasks, staffName, shopConfig]);
+
+  // ── Refresh week data (called when My Week tab is opened) ──
+  const refreshWeekData = async () => {
+    if (!shopConfig) return;
+    setWeekRefreshing(true);
+    try {
+      const [freshConfig, freshSchedule] = await Promise.all([
+        fetchShopConfig(shopConfig.shopId),
+        fetchScheduleFromAirtable(shopConfig.shopId, shopConfig.sector),
+      ]);
+      setShopConfig(freshConfig);
+      setSchedule(freshSchedule);
+    } catch {}
+    finally { setWeekRefreshing(false); }
+  };
 
   // ── Session expiry check ──
   useEffect(() => {
@@ -946,7 +962,7 @@ export default function App() {
           <button style={{...s.toggleBtn,background:viewMode==="tiles"?BRAND:"#f3f4f6",color:viewMode==="tiles"?"#fff":"#6b7280"}}
             onClick={() => setViewMode("tiles")}>⊞ Categories</button>
           <button style={{...s.toggleBtn,background:viewMode==="week"?BRAND:"#f3f4f6",color:viewMode==="week"?"#fff":"#6b7280"}}
-            onClick={() => { setViewMode("week"); setTileSearch(""); }}>📅 My Week</button>
+            onClick={() => { setViewMode("week"); setTileSearch(""); refreshWeekData(); }}>📅 My Week</button>
         </div>
 
         {/* Checklist view */}
@@ -1081,6 +1097,13 @@ export default function App() {
 
         {viewMode === "week" && (
           <div style={{padding:"8px 16px 0"}}>
+            {weekRefreshing && (
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0 12px",color:"#9ca3af",fontSize:13}}>
+                <div style={{width:14,height:14,borderRadius:"50%",border:"2px solid #e5e7eb",borderTop:`2px solid ${BRAND}`,animation:"spin 0.8s linear infinite"}}/>
+                Refreshing schedule…
+              </div>
+            )}
+
             {/* Next shift banner */}
             {upcomingShift && (
               <div style={{background:BRAND,borderRadius:12,padding:"12px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
@@ -1120,12 +1143,15 @@ export default function App() {
                         {hasTasks?`${tasks.length} task${tasks.length!==1?"s":""}  ·  Tap to view`:"No tasks scheduled"}
                       </div>
                     </div>
-                    {hasTasks&&<span style={{fontSize:16,color:"#d1d5db",transform:isExpanded?"rotate(90deg)":"none",transition:"transform 0.2s"}}>›</span>}
+                    {hasTasks&&<span style={{fontSize:16,color:"#d1d5db",display:"inline-block",transform:isExpanded?"rotate(90deg)":"none",transition:"transform 0.2s"}}>›</span>}
                   </button>
                   {isExpanded&&(
-                    <div style={{background:"#fafafa",borderRadius:"0 0 12px 12px",border:`1.5px solid ${isToday?BRAND:"#f0f0f0"}`,borderTop:"none",padding:"12px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
-                      {tasks.map(t=>(
-                        <span key={t} style={{background:"#fff",border:"1px solid #e5e7eb",color:"#374151",fontSize:12,fontWeight:600,padding:"5px 12px",borderRadius:20}}>{t}</span>
+                    <div style={{background:"#fafafa",borderRadius:"0 0 12px 12px",border:`1.5px solid ${isToday?BRAND:"#f0f0f0"}`,borderTop:"none",padding:"4px 0"}}>
+                      {tasks.map((t,i)=>(
+                        <div key={t} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderTop:i===0?"none":"1px solid #f3f4f6"}}>
+                          <div style={{width:6,height:6,borderRadius:"50%",background:isToday?BRAND:"#d1d5db",flexShrink:0}}/>
+                          <span style={{fontSize:14,color:"#374151",fontWeight:500}}>{t}</span>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1133,27 +1159,35 @@ export default function App() {
               );
             })}
 
-            {/* Upcoming absences */}
+            {/* Upcoming absences as ranges */}
             {(()=>{
               const now = new Date(); now.setHours(0,0,0,0);
-              const allAbs = shopConfig?.absences?.[staffName]||[];
-              const upcoming = allAbs.filter(a=>{
-                const d=new Date(a.date+"T12:00:00");
-                return d >= now;
-              }).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5);
-              if(!upcoming.length) return null;
+              const allAbs = (shopConfig?.absences?.[staffName]||[])
+                .filter(a=> new Date(a.date+"T12:00:00") >= now)
+                .sort((a,b)=>a.date.localeCompare(b.date));
+              if(!allAbs.length) return null;
+              // Group into consecutive ranges
+              const groups=[]; let g=null;
+              allAbs.forEach(a=>{
+                if(g){const prev=new Date(g.to+"T12:00:00");prev.setDate(prev.getDate()+1);if(prev.toISOString().split("T")[0]===a.date&&g.comment===(a.comment||"")){g.to=a.date;g.days++;return;}}
+                g={from:a.date,to:a.date,days:1,comment:a.comment||""};groups.push(g);
+              });
               return (
-                <div style={{marginTop:8,background:"#fef2f2",borderRadius:12,border:"1px solid #fecaca",padding:"14px 16px"}}>
+                <div style={{marginTop:8,marginBottom:8,background:"#fef2f2",borderRadius:12,border:"1px solid #fecaca",padding:"14px 16px"}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#dc2626",marginBottom:10}}>📋 Upcoming Absences</div>
-                  {upcoming.map((a,i)=>(
-                    <div key={a.date} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:i===0?"none":"1px solid #fecaca"}}>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:700,color:"#111"}}>{new Date(a.date+"T12:00:00").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"short",year:"numeric"})}</div>
-                        {a.comment&&<div style={{fontSize:12,color:"#6b7280",marginTop:1,fontStyle:"italic"}}>"{a.comment}"</div>}
+                  {groups.map((g,i)=>{
+                    const fmt=d=>new Date(d+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+                    const isSingle=g.from===g.to;
+                    return (
+                      <div key={g.from} style={{padding:"8px 0",borderTop:i===0?"none":"1px solid #fecaca"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#111"}}>
+                          {isSingle?fmt(g.from):`${fmt(g.from)} – ${fmt(g.to)}`}
+                          {!isSingle&&<span style={{fontSize:11,color:"#9ca3af",marginLeft:6}}>({g.days} days)</span>}
+                        </div>
+                        {g.comment&&<div style={{fontSize:12,color:"#6b7280",marginTop:2,fontStyle:"italic"}}>"{g.comment}"</div>}
                       </div>
-                      <span style={{background:"#fecaca",color:"#dc2626",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20}}>Absent</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
