@@ -42,6 +42,33 @@ const SECTOR_TASKS = {
     Saturday:  { _all: ["Opening Setup","Machine Clean","Stock Count","Till Check","Pastry Display","Floor Sweep","Syrup Restock"] },
     Sunday:    { _all: ["Opening Setup","Machine Clean","Stock Count","Till Check","Closing Clean"] },
   },
+  bar: {
+    Monday:    { _all: ["Opening Setup","Bar Stock Check","Glass Polish","Floor Sweep","Cellar Check","Till Check"] },
+    Tuesday:   { _all: ["Opening Setup","Bar Stock Check","Glass Polish","Floor Sweep","Fridge Restock","Till Check"] },
+    Wednesday: { _all: ["Opening Setup","Bar Stock Check","Glass Polish","Cellar Check","Floor Sweep","Till Check"] },
+    Thursday:  { _all: ["Opening Setup","Bar Stock Check","Glass Polish","Floor Sweep","Deep Clean","Till Check"] },
+    Friday:    { _all: ["Opening Setup","Bar Stock Check","Glass Polish","Cellar Check","Floor Sweep","Till Check"] },
+    Saturday:  { _all: ["Opening Setup","Bar Stock Check","Glass Polish","Floor Sweep","Till Check","Closing Clean"] },
+    Sunday:    { _all: ["Opening Setup","Bar Stock Check","Glass Polish","Floor Sweep","Closing Clean"] },
+  },
+  restaurant: {
+    Monday:    { _all: ["Opening Setup","Table Setup","Kitchen Prep","Floor Sweep","Fridge Temp Check","Till Check"] },
+    Tuesday:   { _all: ["Opening Setup","Table Setup","Kitchen Prep","Floor Sweep","Stock Count","Till Check"] },
+    Wednesday: { _all: ["Opening Setup","Table Setup","Kitchen Prep","Floor Sweep","Fridge Temp Check","Till Check"] },
+    Thursday:  { _all: ["Opening Setup","Table Setup","Kitchen Prep","Deep Clean","Floor Sweep","Till Check"] },
+    Friday:    { _all: ["Opening Setup","Table Setup","Kitchen Prep","Fridge Temp Check","Floor Sweep","Till Check"] },
+    Saturday:  { _all: ["Opening Setup","Table Setup","Kitchen Prep","Floor Sweep","Till Check","Closing Clean"] },
+    Sunday:    { _all: ["Opening Setup","Table Setup","Kitchen Prep","Floor Sweep","Closing Clean"] },
+  },
+  hotel: {
+    Monday:    { _all: ["Room Checks","Linen Restock","Reception Cover","Breakfast Setup","Lost Property Log","Maintenance Check"] },
+    Tuesday:   { _all: ["Room Checks","Linen Restock","Reception Cover","Breakfast Setup","Stock Count","Maintenance Check"] },
+    Wednesday: { _all: ["Room Checks","Linen Restock","Reception Cover","Breakfast Setup","Deep Clean","Maintenance Check"] },
+    Thursday:  { _all: ["Room Checks","Linen Restock","Reception Cover","Breakfast Setup","Lost Property Log","Maintenance Check"] },
+    Friday:    { _all: ["Room Checks","Linen Restock","Reception Cover","Breakfast Setup","Stock Count","Maintenance Check"] },
+    Saturday:  { _all: ["Room Checks","Linen Restock","Reception Cover","Breakfast Setup","Maintenance Check","Closing Check"] },
+    Sunday:    { _all: ["Room Checks","Linen Restock","Reception Cover","Breakfast Setup","Closing Check"] },
+  },
 };
 
 const SECTOR_TASK_CATEGORIES = {
@@ -68,6 +95,25 @@ const SECTOR_TASK_CATEGORIES = {
     { category: "Checks",    emoji: "✅", items: ["Fridge Temp Check"] },
     { category: "Cleaning",  emoji: "🧹", items: ["Floor Sweep","Window Clean","Deep Clean","Closing Clean"] },
     { category: "Other",     emoji: "➕", items: [] },
+  ],
+  bar: [
+    { category: "Opening",   emoji: "🔓", items: ["Opening Setup","Till Check"] },
+    { category: "Bar",       emoji: "🍺", items: ["Bar Stock Check","Glass Polish","Fridge Restock","Cellar Check"] },
+    { category: "Cleaning",  emoji: "🧹", items: ["Floor Sweep","Deep Clean","Closing Clean"] },
+    { category: "Other",     emoji: "➕", items: [] },
+  ],
+  restaurant: [
+    { category: "Opening",   emoji: "☀️", items: ["Opening Setup","Table Setup","Till Check"] },
+    { category: "Kitchen",   emoji: "🍳", items: ["Kitchen Prep","Fridge Temp Check","Stock Count","Delivery Unload"] },
+    { category: "Cleaning",  emoji: "🧹", items: ["Floor Sweep","Deep Clean","Closing Clean","Window Clean"] },
+    { category: "Other",     emoji: "➕", items: [] },
+  ],
+  hotel: [
+    { category: "Rooms",       emoji: "🛏️", items: ["Room Checks","Linen Restock","Lost Property Log","Closing Check"] },
+    { category: "Reception",   emoji: "🛎️", items: ["Reception Cover","Breakfast Setup"] },
+    { category: "Maintenance", emoji: "🔧", items: ["Maintenance Check","Deep Clean"] },
+    { category: "Stock",       emoji: "📦", items: ["Stock Count"] },
+    { category: "Other",       emoji: "➕", items: [] },
   ],
 };
 
