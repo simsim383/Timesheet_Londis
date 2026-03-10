@@ -416,6 +416,7 @@ export default function App() {
 
   // ── Task state ──
   const [viewMode, setViewMode]             = useState("checklist");
+  const [expandedDay, setExpandedDay]       = useState(null);
   const [activeCategory, setActiveCategory] = useState(null);
   const [logs, setLogs]                     = useState({});
   const [otherTasks, setOtherTasks]         = useState([]);
@@ -938,29 +939,6 @@ export default function App() {
           {progressPct >= 100 && <div style={s.hoursComplete}>🎉 Full shift logged!</div>}
         </div>
 
-        {/* Upcoming shift */}
-        {upcomingShift && (
-          <div style={{margin:"10px 16px 0",background:"#fff",borderRadius:14,border:"1px solid #f3f4f6",padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.03)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div>
-                <div style={{fontSize:13,fontWeight:800,color:"#111"}}>📅 Next Shift · {upcomingShift.day}</div>
-                <div style={{fontSize:12,color:"#9ca3af",marginTop:1}}>
-                  {upcomingShift.times?.start ? `🕐 ${upcomingShift.times.start}${upcomingShift.times.end?` – ${upcomingShift.times.end}`:""}  ·  ` : ""}{upcomingShift.tasks.length} task{upcomingShift.tasks.length!==1?"s":""} scheduled
-                </div>
-              </div>
-              <div style={{background:BRAND_LIGHT,color:BRAND_DARK,fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20}}>{upcomingShift.day.slice(0,3)}</div>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {upcomingShift.tasks.slice(0,5).map(t=>(
-                <span key={t} style={{background:"#f3f4f6",color:"#6b7280",fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20}}>{t}</span>
-              ))}
-              {upcomingShift.tasks.length>5&&(
-                <span style={{background:"#f3f4f6",color:"#9ca3af",fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20}}>+{upcomingShift.tasks.length-5} more</span>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* View toggle */}
         <div style={s.toggleRow}>
           <button style={{...s.toggleBtn,background:viewMode==="checklist"?BRAND:"#f3f4f6",color:viewMode==="checklist"?"#fff":"#6b7280"}}
@@ -1103,37 +1081,82 @@ export default function App() {
 
         {viewMode === "week" && (
           <div style={{padding:"8px 16px 0"}}>
-            {weekSchedule.map(({day, tasks, times, absences}) => {
-              const isToday = day === todayDayName;
-              const now = new Date();
-              const upcomingAbsForDay = absences.filter(a => {
-                const d = new Date(a.date + "T12:00:00");
-                const diff = (d - now) / (1000*60*60*24);
-                return diff >= -1 && diff <= 14 && new Date(a.date + "T12:00:00").toLocaleDateString("en-GB",{weekday:"long"}) === day;
-              });
-              return (
-                <div key={day} style={{marginBottom:10,opacity:tasks.length===0&&!upcomingAbsForDay.length?0.4:1}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:6}}>
-                    <div style={{fontSize:13,fontWeight:800,color:isToday?BRAND:"#374151"}}>{day}</div>
-                    {isToday&&<span style={{background:BRAND,color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20}}>TODAY</span>}
-                    {times?.start&&<span style={{background:"#f3f4f6",color:"#6b7280",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20}}>🕐 {times.start}{times.end?` – ${times.end}`:""}</span>}
-                    {upcomingAbsForDay.map((a,i)=>{
-                      const tc={absent:{bg:"#fef2f2",col:"#dc2626",label:"Absent"},holiday:{bg:"#eff6ff",col:"#2563eb",label:"Holiday"},sick:{bg:"#fffbeb",col:"#d97706",label:"Sick"},late:{bg:"#f5f3ff",col:"#7c3aed",label:"Late"}}[a.type]||{bg:"#fef2f2",col:"#dc2626",label:"Absent"};
-                      return <span key={i} style={{background:tc.bg,color:tc.col,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20}}>{tc.label} · {new Date(a.date+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</span>;
-                    })}
+            {/* Next shift banner */}
+            {upcomingShift && (
+              <div style={{background:BRAND,borderRadius:12,padding:"12px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:20}}>📅</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>Next Shift: {upcomingShift.day}</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.8)",marginTop:1}}>
+                    {upcomingShift.times?.start?`${upcomingShift.times.start}${upcomingShift.times.end?` – ${upcomingShift.times.end}`:""} · `:""}
+                    {upcomingShift.tasks.length} task{upcomingShift.tasks.length!==1?"s":""}
                   </div>
-                  {tasks.length > 0 ? (
-                    <div style={{background:"#fff",borderRadius:12,border:`1.5px solid ${isToday?BRAND+"50":"#f0f0f0"}`,padding:"10px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
+                </div>
+              </div>
+            )}
+
+            {/* Day rows */}
+            {weekSchedule.map(({day, tasks, times}) => {
+              const isToday = day === todayDayName;
+              const isNext = upcomingShift?.day === day && !isToday;
+              const isExpanded = expandedDay === day;
+              const hasTasks = tasks.length > 0;
+              return (
+                <div key={day} style={{marginBottom:8}}>
+                  <button
+                    onClick={()=>hasTasks?setExpandedDay(isExpanded?null:day):null}
+                    style={{width:"100%",background:"#fff",borderRadius:isExpanded?"12px 12px 0 0":12,border:`1.5px solid ${isToday?BRAND:isNext?"#d1d5db":"#f0f0f0"}`,padding:"13px 16px",display:"flex",alignItems:"center",gap:12,cursor:hasTasks?"pointer":"default",boxSizing:"border-box",textAlign:"left"}}
+                  >
+                    <div style={{width:36,height:36,borderRadius:10,background:isToday?BRAND:isNext?BRAND_LIGHT:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <span style={{fontSize:12,fontWeight:800,color:isToday?"#fff":isNext?BRAND_DARK:"#9ca3af"}}>{day.slice(0,3).toUpperCase()}</span>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:800,color:isToday?BRAND:"#111",display:"flex",alignItems:"center",gap:6}}>
+                        {day}
+                        {isToday&&<span style={{background:BRAND,color:"#fff",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:20}}>TODAY</span>}
+                      </div>
+                      <div style={{fontSize:12,color:"#9ca3af",marginTop:1}}>
+                        {times?.start?`🕐 ${times.start}${times.end?` – ${times.end}`:""}  ·  `:""}
+                        {hasTasks?`${tasks.length} task${tasks.length!==1?"s":""}  ·  Tap to view`:"No tasks scheduled"}
+                      </div>
+                    </div>
+                    {hasTasks&&<span style={{fontSize:16,color:"#d1d5db",transform:isExpanded?"rotate(90deg)":"none",transition:"transform 0.2s"}}>›</span>}
+                  </button>
+                  {isExpanded&&(
+                    <div style={{background:"#fafafa",borderRadius:"0 0 12px 12px",border:`1.5px solid ${isToday?BRAND:"#f0f0f0"}`,borderTop:"none",padding:"12px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
                       {tasks.map(t=>(
-                        <span key={t} style={{background:isToday?BRAND_LIGHT:"#f3f4f6",color:isToday?BRAND_DARK:"#374151",fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20}}>{t}</span>
+                        <span key={t} style={{background:"#fff",border:"1px solid #e5e7eb",color:"#374151",fontSize:12,fontWeight:600,padding:"5px 12px",borderRadius:20}}>{t}</span>
                       ))}
                     </div>
-                  ) : (
-                    <div style={{background:"#fafafa",borderRadius:12,border:"1px solid #f3f4f6",padding:"10px 14px",fontSize:13,color:"#9ca3af"}}>No tasks scheduled</div>
                   )}
                 </div>
               );
             })}
+
+            {/* Upcoming absences */}
+            {(()=>{
+              const now = new Date(); now.setHours(0,0,0,0);
+              const allAbs = shopConfig?.absences?.[staffName]||[];
+              const upcoming = allAbs.filter(a=>{
+                const d=new Date(a.date+"T12:00:00");
+                return d >= now;
+              }).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5);
+              if(!upcoming.length) return null;
+              return (
+                <div style={{marginTop:8,background:"#fef2f2",borderRadius:12,border:"1px solid #fecaca",padding:"14px 16px"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#dc2626",marginBottom:10}}>📋 Upcoming Absences</div>
+                  {upcoming.map((a,i)=>(
+                    <div key={a.date} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:i===0?"none":"1px solid #fecaca"}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#111"}}>{new Date(a.date+"T12:00:00").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"short",year:"numeric"})}</div>
+                        {a.comment&&<div style={{fontSize:12,color:"#6b7280",marginTop:1,fontStyle:"italic"}}>"{a.comment}"</div>}
+                      </div>
+                      <span style={{background:"#fecaca",color:"#dc2626",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20}}>Absent</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
         <div style={{height:80}}/>
