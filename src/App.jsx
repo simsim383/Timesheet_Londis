@@ -193,15 +193,16 @@ async function fetchScheduleFromAirtable(shopId, sector) {
     const staff = r.fields["Staff Name"];
     const day   = r.fields["Day"];
     const tasks = r.fields["Tasks"];
-    const shiftStart = r.fields["Shift Start"] || "";
-    const shiftEnd   = r.fields["Shift End"]   || "";
-    if (staff && day && tasks) {
+    const shiftStart = (r.fields["Shift Start"] || "").trim();
+    const shiftEnd   = (r.fields["Shift End"]   || "").trim();
+    if (staff && day) {
       try {
         if (!sched[day]) sched[day] = {};
-        sched[day][staff] = JSON.parse(tasks);
-        // store times under a _times sub-key
-        if (!sched[day]._times) sched[day]._times = {};
+        if (tasks) sched[day][staff] = JSON.parse(tasks);
+        if (!sched[day]._ids) sched[day]._ids = {};
+        sched[day]._ids[staff] = r.id;
         if (shiftStart || shiftEnd) {
+          if (!sched[day]._times) sched[day]._times = {};
           sched[day]._times[staff] = { start: shiftStart, end: shiftEnd };
         }
       } catch {}
