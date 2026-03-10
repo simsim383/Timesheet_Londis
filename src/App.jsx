@@ -200,7 +200,7 @@ async function fetchScheduleFromAirtable(shopId, sector) {
 }
 
 // ─── AIRTABLE: SUBMIT TIMESHEET ───────────────────────────────────────────────
-async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, logs, otherTasks) {
+async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, logs, otherTasks, incidentNote) {
   const now     = new Date();
   const dateStr = now.toISOString().split("T")[0];
   const wk      = getWeekNumber(now);
@@ -221,6 +221,7 @@ async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, 
       "Store":              shopName,
       "Shop ID":            shopId,
       "Sector":             sector,
+      "Shift Incident":     incidentNote || "",
     }
   });
 
@@ -417,6 +418,7 @@ export default function App() {
   // ── Submit state ──
   const [submitting, setSubmitting]         = useState(false);
   const [submitError, setSubmitError]       = useState("");
+  const [incidentNote, setIncidentNote]     = useState("");
 
   const today   = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const dayName = new Date().toLocaleDateString("en-GB", { weekday: "long" });
@@ -593,7 +595,7 @@ export default function App() {
   const handleSubmit = async () => {
     setSubmitting(true); setSubmitError("");
     try {
-      await submitToAirtable(shopConfig.shopId, shopConfig.shopName, sector, staffName, staffShift, logs, otherTasks);
+      await submitToAirtable(shopConfig.shopId, shopConfig.shopName, sector, staffName, staffShift, logs, otherTasks, incidentNote);
       const all = loadAllData();
       delete all[`${shopConfig.shopId}_${staffName}_${todayKey()}`];
       saveAllData(all);
@@ -608,7 +610,7 @@ export default function App() {
     setScreen("select-staff"); setSubmitError("");
   };
 
-  const resetShift = () => { setLogs({}); setOtherTasks([]); setSubmitError(""); setScreen("home"); };
+  const resetShift = () => { setLogs({}); setOtherTasks([]); setSubmitError(""); setIncidentNote(""); setScreen("home"); };
 
   // ── Guard: loading / error ──
   if (shopLoading) return <LoadingScreen message="Loading shop configuration…" />;
@@ -743,6 +745,17 @@ export default function App() {
           {submitError && <div style={s.errorBox}>⚠️ {submitError}</div>}
           {allEntries.length > 0 && (
             <div style={{padding:"20px 16px 0"}}>
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:15,fontWeight:700,color:"#374151",marginBottom:6}}>🚩 Anything to flag?</div>
+                <div style={{fontSize:13,color:"#9ca3af",marginBottom:10}}>Optional — report an incident, issue, or anything the manager should know about today's shift.</div>
+                <textarea
+                  value={incidentNote}
+                  onChange={e=>setIncidentNote(e.target.value)}
+                  placeholder="e.g. Freezer alarm went off, delivery was short, customer complaint…"
+                  style={{width:"100%",padding:"12px 14px",borderRadius:12,border:`1.5px solid ${incidentNote?"#f97316":"#e5e7eb"}`,fontSize:14,color:"#111",background:incidentNote?"#fff7ed":"#fafafa",boxSizing:"border-box",resize:"none",minHeight:80,outline:"none",fontFamily:"inherit",lineHeight:1.5}}
+                />
+                {incidentNote&&<div style={{fontSize:12,color:"#f97316",fontWeight:600,marginTop:4}}>⚠️ This will be flagged to your manager</div>}
+              </div>
               <button style={{...s.primaryBtn,opacity:submitting?0.6:1}} onClick={handleSubmit} disabled={submitting}>
                 {submitting ? "Submitting…" : "Submit Shift ✓"}
               </button>
