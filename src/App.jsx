@@ -208,7 +208,7 @@ async function fetchScheduleFromAirtable(shopId, sector, staffNames) {
 }
 
 // ─── SUBMIT TIMESHEET ─────────────────────────────────────────────────────────
-async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, logs, otherTasks, incidentNote) {
+async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, logs, otherTasks, incidentNote, taskCategories) {
   const now     = new Date();
   const dateStr = now.toISOString().split("T")[0];
   const wk      = getWeekNumber(now);
@@ -222,7 +222,7 @@ async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, 
     week:       wk,
     year:       yr,
     task:       taskName,
-    category:   getCategoryForTask(taskName, sector, shopConfig?.taskCategories),
+    category:   getCategoryForTask(taskName, sector, taskCategories),
     mins:       parseInt(hours || 0) * 60 + parseInt(minutes || 0),
     notes:      notes || "",
     incident:   !!(incidentNote),
@@ -656,7 +656,7 @@ export default function App() {
   const handleSubmit = async () => {
     setSubmitting(true); setSubmitError("");
     try {
-      await submitToAirtable(shopConfig.shopId, shopConfig.shopName, sector, staffName, staffShift, logs, otherTasks, incidentNote);
+      await submitToAirtable(shopConfig.shopId, shopConfig.shopName, sector, staffName, staffShift, logs, otherTasks, incidentNote, shopConfig.taskCategories);
       const all = loadAllData();
       delete all[`${shopConfig.shopId}_${staffName}_${todayKey()}`];
       saveAllData(all);
