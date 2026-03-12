@@ -515,7 +515,8 @@ export default function App() {
   }, [staffName, logs, otherTasks, shopConfig]);
 
   // ── Derived ──
-  const SHIFT_HOURS = shopConfig?.shiftHours || 6;
+  const staffMemberConfig = shopConfig?.staff?.find(s => s.name === staffName);
+  const SHIFT_HOURS = staffMemberConfig?.shiftHours || shopConfig?.shiftHours || 6;
   const sector      = shopConfig?.sector || "convenience";
   const TASK_CATEGORIES = SECTOR_TASK_CATEGORIES[sector] || SECTOR_TASK_CATEGORIES.convenience;
 
