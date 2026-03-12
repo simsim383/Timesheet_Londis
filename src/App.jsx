@@ -144,8 +144,8 @@ function getTodayDayName() {
   return DAY_NAMES[new Date().getDay()];
 }
 
-function getCategoryForTask(task, sector) {
-  const cats = SECTOR_TASK_CATEGORIES[sector] || SECTOR_TASK_CATEGORIES.convenience;
+function getCategoryForTask(task, sector, customCats) {
+  const cats = customCats || SECTOR_TASK_CATEGORIES[sector] || SECTOR_TASK_CATEGORIES.convenience;
   return cats.find(c => c.items.includes(task))?.category || "Other";
 }
 
@@ -164,13 +164,14 @@ async function fetchShopConfig(shopId) {
     });
   } catch(e) {}
   return {
-    id:         row.id,
-    shopId:     row.id,
-    shopName:   row.name || shopId,
-    sector:     (row.sector || "convenience").toLowerCase(),
-    shiftHours: parseInt(row.shift_hours || 6),
-    staff:      Array.isArray(row.staff) ? row.staff : (typeof row.staff === "string" ? JSON.parse(row.staff) : []),
+    id:             row.id,
+    shopId:         row.id,
+    shopName:       row.name || shopId,
+    sector:         (row.sector || "convenience").toLowerCase(),
+    shiftHours:     parseInt(row.shift_hours || 6),
+    staff:          Array.isArray(row.staff) ? row.staff : (typeof row.staff === "string" ? JSON.parse(row.staff) : []),
     absences,
+    taskCategories: row.task_categories || null,
   };
 }
 
@@ -221,7 +222,7 @@ async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, 
     week:       wk,
     year:       yr,
     task:       taskName,
-    category:   getCategoryForTask(taskName, sector),
+    category:   getCategoryForTask(taskName, sector, shopConfig?.taskCategories),
     mins:       parseInt(hours || 0) * 60 + parseInt(minutes || 0),
     notes:      notes || "",
     incident:   !!(incidentNote),
@@ -531,9 +532,10 @@ export default function App() {
   const SHIFT_HOURS = staffMemberConfig?.shiftHours || shopConfig?.shiftHours || 6;
   const sector      = shopConfig?.sector || "convenience";
   const TASK_CATEGORIES = useMemo(() => {
-    const base = SECTOR_TASK_CATEGORIES[sector] || SECTOR_TASK_CATEGORIES.convenience;
+    // Use owner-customised categories if saved, otherwise fall back to sector defaults
+    const base = (shopConfig?.taskCategories) || SECTOR_TASK_CATEGORIES[sector] || SECTOR_TASK_CATEGORIES.convenience;
     if (!shopCustomTasks.length) return base;
-    // Group custom tasks by their category and merge into the base list
+    // Merge any saved custom tasks into their categories
     const customByCat = {};
     shopCustomTasks.forEach(t => {
       if (!customByCat[t.category]) customByCat[t.category] = [];
@@ -544,14 +546,13 @@ export default function App() {
       if (!extras.length) return cat;
       return { ...cat, items: [...cat.items, ...extras.filter(n => !cat.items.includes(n))] };
     });
-    // Any custom categories not in the base list get their own group
     Object.entries(customByCat).forEach(([cat, items]) => {
       if (!result.find(c => c.category === cat)) {
         result.splice(result.length - 1, 0, { category: cat, emoji: "📌", items });
       }
     });
     return result;
-  }, [sector, shopCustomTasks]);
+  }, [sector, shopCustomTasks, shopConfig]);
 
   const totalMinutes =
     Object.values(logs).reduce((a, v) => a + parseInt(v.hours || 0) * 60 + parseInt(v.minutes || 0), 0) +
@@ -768,7 +769,7 @@ export default function App() {
   // ── SUMMARY ───────────────────────────────────────────────────────────────
   if (screen === "summary") {
     const allEntries = [
-      ...Object.entries(logs).map(([task, val]) => ({ task, val, category: getCategoryForTask(task, sector) })),
+      ...Object.entries(logs).map(([task, val]) => ({ task, val, category: getCategoryForTask(task, sector, shopConfig?.taskCategories) })),
       ...otherTasks.filter(t => t.name).map(t => ({ task: t.name, val: { hours: t.hours, minutes: t.minutes, notes: t.notes }, category: "Other" })),
     ];
     return (
