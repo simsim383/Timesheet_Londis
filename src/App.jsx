@@ -174,6 +174,14 @@ async function fetchShopConfig(shopId) {
   };
 }
 
+// ─── FETCH CUSTOM TASKS ──────────────────────────────────────────────────────
+async function fetchCustomTasksForShop(shopId) {
+  try {
+    const rows = await sbGet("custom_tasks", `shop_id=eq.${encodeURIComponent(shopId)}&order=category,name`);
+    return rows;
+  } catch(e) { return []; }
+}
+
 // ─── FETCH LIVE SCHEDULE ──────────────────────────────────────────────────────
 async function fetchScheduleFromAirtable(shopId, sector, staffNames) {
   const template = SECTOR_TASKS[sector] || SECTOR_TASKS.convenience;
@@ -398,6 +406,7 @@ export default function App() {
   const [inputNotes, setInputNotes]         = useState("");
   const [inputOtherName, setInputOtherName] = useState("");
   const [tileSearch, setTileSearch]         = useState("");
+  const [shopCustomTasks, setShopCustomTasks] = useState([]);
 
   // ── Submit state ──
   const [submitting, setSubmitting]         = useState(false);
@@ -426,12 +435,15 @@ export default function App() {
       });
   }, []);
 
-  // ── Step 2: Load schedule once shop config is ready ──
+  // ── Step 2: Load schedule + custom tasks once shop config is ready ──
   useEffect(() => {
     if (!shopConfig) return;
     setScheduleLoading(true);
-    fetchScheduleFromAirtable(shopConfig.shopId, shopConfig.sector, shopConfig.staff.map(s=>s.name))
-      .then(s => { setSchedule(s); setScheduleLoading(false); })
+    Promise.all([
+      fetchScheduleFromAirtable(shopConfig.shopId, shopConfig.sector, shopConfig.staff.map(s=>s.name)),
+      fetchCustomTasksForShop(shopConfig.shopId),
+    ])
+      .then(([s, ct]) => { setSchedule(s); setShopCustomTasks(ct); setScheduleLoading(false); })
       .catch(() => {
         setSchedule(SECTOR_TASKS[shopConfig.sector] || SECTOR_TASKS.convenience);
         setScheduleError(true);
@@ -518,7 +530,28 @@ export default function App() {
   const staffMemberConfig = shopConfig?.staff?.find(s => s.name === staffName);
   const SHIFT_HOURS = staffMemberConfig?.shiftHours || shopConfig?.shiftHours || 6;
   const sector      = shopConfig?.sector || "convenience";
-  const TASK_CATEGORIES = SECTOR_TASK_CATEGORIES[sector] || SECTOR_TASK_CATEGORIES.convenience;
+  const TASK_CATEGORIES = useMemo(() => {
+    const base = SECTOR_TASK_CATEGORIES[sector] || SECTOR_TASK_CATEGORIES.convenience;
+    if (!shopCustomTasks.length) return base;
+    // Group custom tasks by their category and merge into the base list
+    const customByCat = {};
+    shopCustomTasks.forEach(t => {
+      if (!customByCat[t.category]) customByCat[t.category] = [];
+      customByCat[t.category].push(t.name);
+    });
+    const result = base.map(cat => {
+      const extras = customByCat[cat.category] || [];
+      if (!extras.length) return cat;
+      return { ...cat, items: [...cat.items, ...extras.filter(n => !cat.items.includes(n))] };
+    });
+    // Any custom categories not in the base list get their own group
+    Object.entries(customByCat).forEach(([cat, items]) => {
+      if (!result.find(c => c.category === cat)) {
+        result.splice(result.length - 1, 0, { category: cat, emoji: "📌", items });
+      }
+    });
+    return result;
+  }, [sector, shopCustomTasks]);
 
   const totalMinutes =
     Object.values(logs).reduce((a, v) => a + parseInt(v.hours || 0) * 60 + parseInt(v.minutes || 0), 0) +
