@@ -6,12 +6,14 @@ const BRAND_DARK  = "#C4622A";
 const BRAND_LIGHT = "#FDF0E8";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const AIRTABLE_BASE_ID   = "app6DROW7O9mZnmTY";
-const AIRTABLE_SHIFTS_ID = "tbl4sVuVCiDCyXF3O";
-const AIRTABLE_TASKS_ID  = "tblTl58cC0siAAaSN";
-const AIRTABLE_SHOPS_ID  = "tbl907rSCoxOKJBce"; // ← replace with your Shops table ID
-const AIRTABLE_TOKEN     = "patppMWHKbx68aeNP.8d37f524addbaf4997c863c9682c7da9932bb0927727dade5272a72157835ea4";
 const SESSION_MINUTES    = 120;
+
+// ── SUPABASE ──────────────────────────────────────────────────────
+const SB_URL="https://zdotindfglkiasieqosq.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkb3RpbmRmZ2xraWFzaWVxb3NxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMjE1OTYsImV4cCI6MjA4ODg5NzU5Nn0.4VUdZQbsGFgnTmjbhp2_GFCV563soIKqbcvgrp7QJdI";
+const SB_HDR={"apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`,"Content-Type":"application/json","Prefer":"return=representation"};
+async function sbGet(t,p=""){const r=await fetch(`${SB_URL}/rest/v1/${t}?${p}`,{headers:SB_HDR});if(!r.ok){const e=await r.json();throw new Error(e?.message||`GET ${t} failed`);}return r.json();}
+async function sbPost(t,b){const r=await fetch(`${SB_URL}/rest/v1/${t}`,{method:"POST",headers:SB_HDR,body:JSON.stringify(b)});if(!r.ok){const e=await r.json();throw new Error(e?.message||`POST ${t} failed`);}return r.json();}
 
 // ─── SECTOR DEFAULT TASK POOLS ───────────────────────────────────────────────
 const SECTOR_TASKS = {
@@ -147,127 +149,86 @@ function getCategoryForTask(task, sector) {
   return cats.find(c => c.items.includes(task))?.category || "Other";
 }
 
-// ─── AIRTABLE: FETCH SHOP CONFIG ─────────────────────────────────────────────
+// ─── FETCH SHOP CONFIG ────────────────────────────────────────────────────────
 async function fetchShopConfig(shopId) {
-  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_SHOPS_ID}?filterByFormula=${encodeURIComponent(`{Shop ID}="${shopId}"`)}`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
-  if (!r.ok) throw new Error("Could not load shop config");
-  const d = await r.json();
-  if (!d.records.length) throw new Error(`Shop "${shopId}" not found. Check the URL.`);
-  const rec = d.records[0].fields;
+  const rows = await sbGet("shops", `id=eq.${encodeURIComponent(shopId)}&active=eq.true`);
+  if (!rows.length) throw new Error(`Shop "${shopId}" not found. Check the URL.`);
+  const row = rows[0];
+  // Fetch absences separately
   let absences = {};
-  try { absences = JSON.parse(rec["Absences"] || "{}"); } catch {}
+  try {
+    const absRows = await sbGet("absences", `shop_id=eq.${encodeURIComponent(shopId)}&order=date.desc`);
+    absRows.forEach(r => {
+      if (!absences[r.staff_name]) absences[r.staff_name] = [];
+      absences[r.staff_name].push({ date: r.date, type: "absent", comment: r.comment || "" });
+    });
+  } catch(e) {}
   return {
-    id:         d.records[0].id,
-    shopId:     rec["Shop ID"],
-    shopName:   rec["Shop Name"] || shopId,
-    sector:     (rec["Sector"] || "convenience").toLowerCase(),
-    shiftHours: parseInt(rec["Shift Hours"] || 6),
-    staff:      JSON.parse(rec["Staff"] || "[]"),
+    id:         row.id,
+    shopId:     row.id,
+    shopName:   row.name || shopId,
+    sector:     (row.sector || "convenience").toLowerCase(),
+    shiftHours: parseInt(row.shift_hours || 6),
+    staff:      Array.isArray(row.staff) ? row.staff : (typeof row.staff === "string" ? JSON.parse(row.staff) : []),
     absences,
   };
 }
 
-// ─── AIRTABLE: FETCH LIVE SCHEDULE ───────────────────────────────────────────
+// ─── FETCH LIVE SCHEDULE ──────────────────────────────────────────────────────
 async function fetchScheduleFromAirtable(shopId, sector, staffNames) {
-  async function fetchWithFilter(formula) {
-    let rows = [], offset = null;
-    do {
-      let url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TASKS_ID}?pageSize=100&filterByFormula=${encodeURIComponent(formula)}`;
-      if (offset) url += `&offset=${encodeURIComponent(offset)}`;
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
-      if (!r.ok) throw new Error("Schedule fetch failed");
-      const d = await r.json();
-      rows = [...rows, ...d.records];
-      offset = d.offset || null;
-    } while (offset);
-    return rows;
-  }
-
-  let rows = [];
-  // Skip Shop ID filter (likely a linked field - causes 422). Use Staff Name filter directly.
-  if (staffNames && staffNames.length > 0) {
-    try {
-      const orClauses = staffNames.map(n => `{Staff Name}="${n}"`).join(",");
-      rows = await fetchWithFilter(`OR(${orClauses})`);
-    } catch(e) { console.warn("Schedule fetch by staff name failed:", e); }
-  }
-  if (rows.length === 0) {
-    try { rows = await fetchWithFilter(`{Shop ID}="${shopId}"`); } catch(e) {}
-  }
-
   const template = SECTOR_TASKS[sector] || SECTOR_TASKS.convenience;
   const sched = JSON.parse(JSON.stringify(template));
-  rows.forEach(r => {
-    const staff = r.fields["Staff Name"];
-    const day   = r.fields["Day"];
-    const tasks = r.fields["Tasks"];
-    const shiftStart = (r.fields["Shift Start"] || "").trim();
-    const shiftEnd   = (r.fields["Shift End"]   || "").trim();
-    if (staff && day) {
+  try {
+    const rows = await sbGet("task_schedules", `shop_id=eq.${encodeURIComponent(shopId)}&order=staff_name`);
+    rows.forEach(row => {
+      const { staff_name: staff, day, tasks, shift_start, shift_end, id } = row;
+      if (!staff || !day) return;
       try {
         if (!sched[day]) sched[day] = {};
-        if (tasks) sched[day][staff] = JSON.parse(tasks);
+        if (tasks) sched[day][staff] = Array.isArray(tasks) ? tasks : JSON.parse(tasks);
         if (!sched[day]._ids) sched[day]._ids = {};
-        sched[day]._ids[staff] = r.id;
-        if (shiftStart || shiftEnd) {
+        sched[day]._ids[staff] = id;
+        if (shift_start || shift_end) {
           if (!sched[day]._times) sched[day]._times = {};
-          sched[day]._times[staff] = { start: shiftStart, end: shiftEnd };
+          sched[day]._times[staff] = { start: shift_start || "", end: shift_end || "" };
         }
-      } catch {}
-    }
-  });
+      } catch(e) {}
+    });
+  } catch(e) { console.warn("fetchSchedule failed:", e); }
   return sched;
 }
 
-// ─── AIRTABLE: SUBMIT TIMESHEET ───────────────────────────────────────────────
+// ─── SUBMIT TIMESHEET ─────────────────────────────────────────────────────────
 async function submitToAirtable(shopId, shopName, sector, staffName, shiftName, logs, otherTasks, incidentNote) {
   const now     = new Date();
   const dateStr = now.toISOString().split("T")[0];
   const wk      = getWeekNumber(now);
-  const records = [];
+  const yr      = now.getFullYear();
+  const rows    = [];
 
-  const makeRecord = (taskName, hours, minutes, notes) => ({
-    fields: {
-      "Staff Name":         staffName,
-      "Date":               dateStr,
-      "Shift Submitted At": now.toISOString(),
-      "Total Minutes":      parseInt(hours || 0) * 60 + parseInt(minutes || 0),
-      "Task Name":          taskName,
-      "Task Hours":         parseInt(hours || 0),
-      "Task Minutes":       parseInt(minutes || 0),
-      "Task Notes":         notes || "",
-      "Category":           getCategoryForTask(taskName, sector),
-      "Week Number":        wk,
-      "Store":              shopName,
-      "Shop ID":            shopId,
-      "Sector":             sector,
-      "Shift Incident":     incidentNote || "",
-    }
+  const makeRow = (taskName, hours, minutes, notes) => ({
+    shop_id:    shopId,
+    staff_name: staffName,
+    date:       dateStr,
+    week:       wk,
+    year:       yr,
+    task:       taskName,
+    category:   getCategoryForTask(taskName, sector),
+    mins:       parseInt(hours || 0) * 60 + parseInt(minutes || 0),
+    notes:      notes || "",
+    incident:   !!(incidentNote),
   });
 
   Object.entries(logs).forEach(([taskName, val]) => {
-    records.push(makeRecord(taskName, val.hours, val.minutes, val.notes));
+    rows.push(makeRow(taskName, val.hours, val.minutes, val.notes));
   });
-
   otherTasks.forEach(ot => {
     if (!ot.name || (!ot.hours && !ot.minutes)) return;
-    records.push(makeRecord(ot.name, ot.hours, ot.minutes, ot.notes));
+    rows.push(makeRow(ot.name, ot.hours, ot.minutes, ot.notes));
   });
 
-  if (!records.length) throw new Error("No tasks to submit");
-
-  for (let i = 0; i < records.length; i += 10) {
-    const res = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_SHIFTS_ID}`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ records: records.slice(i, i + 10) }),
-      }
-    );
-    if (!res.ok) { const e = await res.json(); throw new Error(e?.error?.message || "Submission failed"); }
-  }
+  if (!rows.length) throw new Error("No tasks to submit");
+  await sbPost("shifts", rows);
 }
 
 // ─── LOCAL STORAGE ────────────────────────────────────────────────────────────
